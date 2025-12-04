@@ -93,7 +93,27 @@ class FileHandler:
     def save_processed_dataframe(self, file_id: str, df: pd.DataFrame) -> str:
         """Save processed DataFrame and return file path"""
         file_path = os.path.join(self.temp_dir, f"{file_id}_processed.csv")
-        df.to_csv(file_path, index=False)
+        
+        # Log before saving
+        print(f"\n--- SAVING PROCESSED FILE ---")
+        print(f"DataFrame shape: {df.shape}")
+        print(f"Missing values per column BEFORE save:")
+        print(df.isna().sum())
+        print(f"Total missing values: {df.isna().sum().sum()}")
+        
+        # Save with proper NA handling - don't write NaN as string
+        df.to_csv(file_path, index=False, na_rep='')
+        print(f"Saved to: {file_path}")
+        
+        # Verify by reading back
+        print(f"\n--- VERIFYING SAVED FILE ---")
+        df_verify = self._load_dataframe(file_path)
+        print(f"Loaded shape: {df_verify.shape}")
+        print(f"Missing values per column AFTER save:")
+        print(df_verify.isna().sum())
+        print(f"Total missing values: {df_verify.isna().sum().sum()}")
+        print(f"--- VERIFICATION COMPLETE ---\n")
+        
         return file_path
     
     def get_processed_file_path(self, file_id: str) -> str:
