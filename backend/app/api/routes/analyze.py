@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException
 from app.models.schemas import AnalysisResponse
 from app.services.data_analyzer import DataAnalyzer
+import json
+import os
 
 router = APIRouter()
 analyzer = DataAnalyzer()
@@ -11,7 +13,20 @@ async def analyze_file(file_id: str):
     Analyze uploaded file for data quality issues
     """
     try:
-        analysis_result = await analyzer.analyze_dataset(file_id)
+        # Load failed columns metadata if it exists
+        metadata_dir = "temp/metadata"
+        metadata_file = os.path.join(metadata_dir, f"{file_id}_failed_columns.json")
+        exclude_skewness_columns = set()
+        
+        if os.path.exists(metadata_file):
+            try:
+                with open(metadata_file, 'r') as f:
+                    data = json.load(f)
+                    exclude_skewness_columns = set(data.get('failed_skewness_columns', []))
+            except Exception as e:
+                print(f"Warning: Could not load failed columns metadata: {e}")
+        
+        analysis_result = await analyzer.analyze_dataset(file_id, exclude_skewness_columns=exclude_skewness_columns)
         return analysis_result
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="File not found")

@@ -60,11 +60,15 @@ async def fix_all_issues(file_id: str):
 @router.post("/preprocess/{file_id}/fix-imbalanced")
 async def fix_imbalanced_data(file_id: str, request: ImbalancedDataRequest):
     """
-    Fix imbalanced data using selected sampling method
+    Fix imbalanced data using selected sampling method, then auto-fix any new issues
     """
     try:
+        print(f"\n=== FIXING IMBALANCED DATA ===")
+        print(f"Method: {request.method}, Target: {request.target_column}")
+        
         # Load the DataFrame (NOT async)
         df = preprocessor.file_handler.load_dataframe(file_id)
+        original_rows = len(df)
         
         # Apply imbalanced data handling
         df_processed = preprocessor._handle_imbalanced_data(
@@ -79,14 +83,24 @@ async def fix_imbalanced_data(file_id: str, request: ImbalancedDataRequest):
             df_processed
         )
         
-        # Re-analyze using the ORIGINAL file_id (the processed file overwrites it)
-        analysis_result = await preprocessor.analyzer.analyze_dataset(file_id)
+        print(f"✓ Imbalanced data fixed: {original_rows} → {len(df_processed)} rows")
+        print(f"\n=== AUTO-FIXING NEW ISSUES CREATED BY SAMPLING ===")
+        
+        # Automatically run fix_all_issues to clean up any new issues created by sampling
+        # (e.g., duplicates, outliers, skewness from synthetic data)
+        auto_fix_result = await preprocessor.fix_all_issues(file_id)
+        
+        print(f"✓ Auto-fix complete: {auto_fix_result.summary['actions_applied']} actions applied")
+        print(f"=== IMBALANCED DATA FIX COMPLETE ===\n")
         
         return {
-            "file_id": file_id,  # Return original file_id
+            "file_id": file_id,
             "status": "success",
-            "message": f"Applied {request.method} to handle imbalanced data",
-            "remaining_issues": len(analysis_result.issues)
+            "message": f"Applied {request.method} and auto-fixed resulting issues",
+            "original_rows": original_rows,
+            "processed_rows": auto_fix_result.processed_rows,
+            "actions_applied": auto_fix_result.summary['actions_applied'],
+            "remaining_issues": auto_fix_result.summary['remaining_issues']
         }
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="File not found")

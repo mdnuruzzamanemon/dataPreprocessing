@@ -6,6 +6,8 @@ from app.models.schemas import PreprocessAction, PreprocessResponse, IssueType, 
 from app.services.file_handler import FileHandler
 from app.services.data_analyzer import DataAnalyzer
 import re
+import json
+import os
 
 class DataPreprocessor:
     """Apply preprocessing transformations to datasets"""
@@ -13,6 +15,8 @@ class DataPreprocessor:
     def __init__(self):
         self.file_handler = FileHandler()
         self.analyzer = DataAnalyzer()
+        self.metadata_dir = "temp/metadata"
+        os.makedirs(self.metadata_dir, exist_ok=True)
     
     async def preprocess_dataset(
         self, 
@@ -474,14 +478,14 @@ class DataPreprocessor:
             skew_after_log = df[col].skew()
             print(f"    Column '{col}': After log transform = {skew_after_log:.2f}")
             
-            # If log transform didn't improve skewness, restore and skip
-            if abs(skew_after_log) >= original_skew * 0.95:  # Less than 5% improvement
-                print(f"    Column '{col}': Log transform didn't improve skewness, restoring original")
+            # If log transform didn't improve skewness significantly, restore and skip
+            if abs(skew_after_log) >= original_skew * 0.90:  # Less than 10% improvement
+                print(f"    Column '{col}': Log transform didn't improve skewness enough ({abs(skew_after_log):.2f} vs {original_skew:.2f}), restoring original")
                 df[col] = original_col
                 continue
             
-            # If still above threshold (1.0), try box-cox
-            if abs(skew_after_log) > 1.0:
+            # If still significantly skewed, try box-cox
+            if abs(skew_after_log) > 0.9:  # Slightly lower threshold for box-cox attempt
                 try:
                     from scipy import stats
                     # Box-Cox requires positive values and variation
@@ -545,6 +549,9 @@ class DataPreprocessor:
         iteration = 0
         max_iterations = 5  # Prevent infinite loops
         
+        # Load previously failed skewness columns for this file
+        failed_skewness_columns = self._load_failed_columns(file_id)
+        
         while iteration < max_iterations:
             iteration += 1
             print(f"\\n{'='*50}")
@@ -552,7 +559,7 @@ class DataPreprocessor:
             print(f"{'='*50}")
             
             # Analyze current DataFrame state directly
-            issues = self._analyze_dataframe(df)
+            issues = self._analyze_dataframe(df, exclude_skewness_columns=failed_skewness_columns)
             print(f"Total issues detected: {len(issues)}")
             
             if len(issues) == 0:
@@ -565,6 +572,15 @@ class DataPreprocessor:
                 print(f"  - {issue.type.value}: {len(issue.affected_columns)} columns, severity: {issue.severity.value}")
                 action = self._get_recommended_action(issue)
                 if action:
+                    # Skip skewness columns that have already failed transformation
+                    if action.issue_type == IssueType.SKEWNESS:
+                        # Filter out columns that already failed
+                        fixable_columns = [col for col in action.columns if col not in failed_skewness_columns]
+                        if not fixable_columns:
+                            print(f"    → Skipping skewness fix - all columns previously failed transformation")
+                            continue
+                        # Update action to only include fixable columns
+                        action.columns = fixable_columns
                     actions.append(action)
             
             if len(actions) == 0:
@@ -585,7 +601,8 @@ class DataPreprocessor:
                 IssueType.SKEWNESS: 8,
                 IssueType.NOISY_TEXT: 9,
                 IssueType.WRONG_DATE_FORMAT: 10,
-                IssueType.MISSING_VALUES: 11
+                IssueType.MISSING_VALUES: 11,
+                # Note: IMBALANCED_DATA is intentionally excluded from auto-fix
             }
             actions.sort(key=lambda a: action_order.get(a.issue_type, 99))
             
@@ -593,7 +610,33 @@ class DataPreprocessor:
             df = df.copy()
             for action in actions:
                 try:
+                    df_before = df.copy()
                     df = self._apply_action(df, action)
+                    
+                    # Check if skewness action actually changed the data
+                    if action.issue_type == IssueType.SKEWNESS:
+                        # If DataFrame didn't change, transformation failed
+                        if df.equals(df_before):
+                            print(f"    ⚠️ Skewness transformation failed for {action.columns}")
+                            print(f"    → Removing unfixable columns: {action.columns}")
+                            
+                            # Drop the unfixable columns from the dataset
+                            df = df.drop(columns=action.columns, errors='ignore')
+                            
+                            # Track as failed for metadata
+                            failed_skewness_columns.update(action.columns)
+                            self._save_failed_columns(file_id, failed_skewness_columns)
+                            
+                            all_applied_actions.append({
+                                "iteration": iteration,
+                                "issue_type": action.issue_type.value,
+                                "columns": action.columns,
+                                "method": "remove_column",
+                                "status": "removed",
+                                "reason": "transformation_ineffective"
+                            })
+                            continue
+                    
                     all_applied_actions.append({
                         "iteration": iteration,
                         "issue_type": action.issue_type.value,
@@ -618,8 +661,8 @@ class DataPreprocessor:
         print(f"{'='*50}")
         processed_path = self.file_handler.save_processed_dataframe(file_id, df)
         
-        # Get final issue count and check for imbalanced data
-        final_issues = self._analyze_dataframe(df)
+        # Get final issue count and check for imbalanced data (exclude failed skewness columns)
+        final_issues = self._analyze_dataframe(df, exclude_skewness_columns=failed_skewness_columns)
         has_imbalanced_data = any(issue.type == IssueType.IMBALANCED_DATA for issue in final_issues)
         imbalanced_columns = None
         if has_imbalanced_data:
@@ -643,7 +686,34 @@ class DataPreprocessor:
             }
         )
     
-    def _analyze_dataframe(self, df: pd.DataFrame) -> List[DataIssue]:
+    def _load_failed_columns(self, file_id: str) -> set:
+        """Load previously failed skewness columns for this file"""
+        metadata_file = os.path.join(self.metadata_dir, f"{file_id}_failed_columns.json")
+        if os.path.exists(metadata_file):
+            try:
+                with open(metadata_file, 'r') as f:
+                    data = json.load(f)
+                    failed_cols = set(data.get('failed_skewness_columns', []))
+                    if failed_cols:
+                        print(f"\n📋 Loaded {len(failed_cols)} previously failed skewness columns: {failed_cols}")
+                    return failed_cols
+            except Exception as e:
+                print(f"Warning: Could not load failed columns metadata: {e}")
+        return set()
+    
+    def _save_failed_columns(self, file_id: str, failed_columns: set):
+        """Save failed skewness columns to persist across sessions"""
+        metadata_file = os.path.join(self.metadata_dir, f"{file_id}_failed_columns.json")
+        try:
+            with open(metadata_file, 'w') as f:
+                json.dump({
+                    'failed_skewness_columns': list(failed_columns)
+                }, f)
+            print(f"💾 Saved {len(failed_columns)} failed columns to metadata")
+        except Exception as e:
+            print(f"Warning: Could not save failed columns metadata: {e}")
+    
+    def _analyze_dataframe(self, df: pd.DataFrame, exclude_skewness_columns: set = None) -> List[DataIssue]:
         """Analyze a DataFrame and return list of issues (without file I/O)"""
         issues = []
         
@@ -655,7 +725,22 @@ class DataPreprocessor:
         
         skewness_issues = self.analyzer._check_skewness(df)
         if skewness_issues:
-            print(f"    [DETECTION] Found {len(skewness_issues[0].affected_columns)} columns with skewness")
+            # Filter out columns that have been marked as unfixable
+            if exclude_skewness_columns:
+                for issue in skewness_issues:
+                    # Remove failed columns from affected_columns
+                    issue.affected_columns = [col for col in issue.affected_columns if col not in exclude_skewness_columns]
+                    # Update details to match filtered columns
+                    if hasattr(issue, 'details') and isinstance(issue.details, dict):
+                        issue.details = {k: v for k, v in issue.details.items() if k not in exclude_skewness_columns}
+                    # Update count
+                    issue.count = len(issue.affected_columns)
+                    # Update description
+                    if issue.count > 0:
+                        issue.description = f"Found {issue.count} columns with skewed distributions"
+                # Only add issue if there are still affected columns
+                skewness_issues = [issue for issue in skewness_issues if len(issue.affected_columns) > 0]
+            print(f"    [DETECTION] Found {len(skewness_issues[0].affected_columns) if skewness_issues else 0} columns with skewness (after excluding unfixable)")
         issues.extend(skewness_issues)
         
         issues.extend(self.analyzer._check_missing_values(df))
@@ -701,10 +786,9 @@ class DataPreprocessor:
         elif issue.type == IssueType.INCONSISTENT_TYPES:
             method = "convert"
         elif issue.type == IssueType.IMBALANCED_DATA:
-            # Auto-fix with SMOTE using first detected column as target
-            method = "smote"
-            # The target column is the first (and usually only) affected column
-            parameters = {"target_column": issue.affected_columns[0]}
+            # SKIP auto-fix for imbalanced data - user must select method via popup
+            print(f"    → Skipping auto-fix for imbalanced data - requires user selection")
+            return None
         else:
             print(f"    → No handler for issue type: {issue.type.value}")
             return None

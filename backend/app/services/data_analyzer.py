@@ -16,7 +16,7 @@ class DataAnalyzer:
     def __init__(self):
         self.file_handler = FileHandler()
     
-    async def analyze_dataset(self, file_id: str) -> AnalysisResponse:
+    async def analyze_dataset(self, file_id: str, exclude_skewness_columns: set = None) -> AnalysisResponse:
         """Perform comprehensive analysis on the dataset"""
         df = self.file_handler.load_dataframe(file_id)
         issues: List[DataIssue] = []
@@ -29,7 +29,7 @@ class DataAnalyzer:
         issues.extend(self._check_categorical_issues(df))
         issues.extend(self._check_constant_features(df))
         issues.extend(self._check_correlated_features(df))
-        issues.extend(self._check_skewness(df))
+        issues.extend(self._check_skewness(df, exclude_columns=exclude_skewness_columns))
         issues.extend(self._check_high_cardinality(df))
         issues.extend(self._check_date_formats(df))
         issues.extend(self._check_text_issues(df))
@@ -256,13 +256,17 @@ class DataAnalyzer:
         
         return issues
     
-    def _check_skewness(self, df: pd.DataFrame) -> List[DataIssue]:
+    def _check_skewness(self, df: pd.DataFrame, exclude_columns: set = None) -> List[DataIssue]:
         """Check for skewed distributions"""
         issues = []
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         skewed_cols = {}
         
         for col in numeric_cols:
+            # Skip excluded columns (previously failed transformations)
+            if exclude_columns and col in exclude_columns:
+                continue
+                
             # Skip columns with too few unique values (can't be meaningfully transformed)
             unique_count = df[col].nunique()
             if unique_count < 5:
@@ -274,7 +278,10 @@ class DataAnalyzer:
                 continue
             
             skewness = df[col].skew()
-            if abs(skewness) > settings.SKEWNESS_THRESHOLD:
+            # Add tolerance to prevent re-detection of marginally skewed columns after transformation
+            # If threshold is 1.0, only flag if skewness > 1.1 (10% tolerance)
+            detection_threshold = settings.SKEWNESS_THRESHOLD * 1.1
+            if abs(skewness) > detection_threshold:
                 skewed_cols[col] = round(skewness, 2)
         
         if skewed_cols:
