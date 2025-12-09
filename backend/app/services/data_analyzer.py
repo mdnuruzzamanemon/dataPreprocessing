@@ -263,6 +263,16 @@ class DataAnalyzer:
         skewed_cols = {}
         
         for col in numeric_cols:
+            # Skip columns with too few unique values (can't be meaningfully transformed)
+            unique_count = df[col].nunique()
+            if unique_count < 5:
+                continue
+                
+            # Skip columns with insufficient variation
+            col_min, col_max = df[col].min(), df[col].max()
+            if col_max - col_min < 0.01:
+                continue
+            
             skewness = df[col].skew()
             if abs(skewness) > settings.SKEWNESS_THRESHOLD:
                 skewed_cols[col] = round(skewness, 2)

@@ -50,6 +50,18 @@ export const fixAllIssues = async (fileId: string): Promise<PreprocessResponse> 
   return response.data;
 };
 
+export const fixImbalancedData = async (
+  fileId: string,
+  targetColumn: string,
+  method: string
+): Promise<any> => {
+  const response = await apiClient.post(
+    `/api/preprocess/${fileId}/fix-imbalanced`,
+    { target_column: targetColumn, method }
+  );
+  return response.data;
+};
+
 export const downloadFile = (fileId: string): string => {
   return `${apiClient.defaults.baseURL}/api/download/${fileId}`;
 };

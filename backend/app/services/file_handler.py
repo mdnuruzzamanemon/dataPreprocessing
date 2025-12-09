@@ -66,10 +66,18 @@ class FileHandler:
             raise ValueError(f"Unsupported file type: {file_ext}")
     
     def load_dataframe(self, file_id: str) -> pd.DataFrame:
-        """Load DataFrame by file ID"""
+        """Load DataFrame by file ID - prefers processed version if available"""
+        # Check if processed file exists first
+        processed_path = os.path.join(self.temp_dir, f"{file_id}_processed.csv")
+        if os.path.exists(processed_path):
+            print(f"Loading PROCESSED file: {processed_path}")
+            return self._load_dataframe(processed_path)
+        
+        # Otherwise load original file
         file_path = self._get_file_path(file_id)
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_id}")
+        print(f"Loading ORIGINAL file: {file_path}")
         return self._load_dataframe(file_path)
     
     def _get_file_path(self, file_id: str) -> str:

@@ -90,12 +90,17 @@ class DataPreprocessor:
         columns = action.columns
         method = action.method
         
+        print(f"  → Applying {issue_type.value} fix on {len(columns)} columns using method '{method}'")
+        
         if issue_type == IssueType.MISSING_VALUES:
             return self._handle_missing_values(df, columns, method)
         elif issue_type == IssueType.DUPLICATES:
             return self._handle_duplicates(df, method)
         elif issue_type == IssueType.OUTLIERS:
-            return self._handle_outliers(df, columns, method)
+            print(f"    Calling _handle_outliers with columns: {columns}")
+            result = self._handle_outliers(df, columns, method)
+            print(f"    Outlier handler returned DataFrame with {len(result)} rows")
+            return result
         elif issue_type == IssueType.CATEGORICAL_INCONSISTENCIES:
             return self._handle_categorical(df, columns, method)
         elif issue_type == IssueType.WRONG_DATE_FORMAT:
@@ -105,13 +110,22 @@ class DataPreprocessor:
         elif issue_type == IssueType.CONSTANT_VALUES:
             return self._remove_columns(df, columns)
         elif issue_type == IssueType.SKEWNESS:
-            return self._handle_skewness(df, columns, method)
+            print(f"    Calling _handle_skewness with columns: {columns}")
+            result = self._handle_skewness(df, columns, method)
+            print(f"    Skewness handler returned DataFrame")
+            return result
         elif issue_type == IssueType.HIGH_CARDINALITY:
             return self._handle_high_cardinality(df, columns, method)
         elif issue_type == IssueType.CORRELATED_FEATURES:
             return self._handle_correlated_features(df, columns)
         elif issue_type == IssueType.INCONSISTENT_TYPES:
             return self._handle_inconsistent_types(df, columns)
+        elif issue_type == IssueType.IMBALANCED_DATA:
+            target_column = action.parameters.get("target_column", columns[0])
+            print(f"    Calling _handle_imbalanced_data with target: {target_column}")
+            result = self._handle_imbalanced_data(df, target_column, method)
+            print(f"    Imbalanced data handler returned DataFrame with {len(result)} rows")
+            return result
         else:
             print(f"    WARNING: No handler for issue type {issue_type}")
             return df
@@ -203,6 +217,7 @@ class DataPreprocessor:
         """Handle outliers"""
         for col in columns:
             if col not in df.columns:
+                print(f"    Column '{col}' not found")
                 continue
             
             # Skip non-numeric columns
@@ -210,7 +225,6 @@ class DataPreprocessor:
                 print(f"    Skipping non-numeric column '{col}'")
                 continue
             
-            outliers_before = 0
             if method == "remove":
                 Q1 = df[col].quantile(0.25)
                 Q3 = df[col].quantile(0.75)
@@ -219,17 +233,26 @@ class DataPreprocessor:
                 upper_bound = Q3 + 1.5 * IQR
                 outliers_before = ((df[col] < lower_bound) | (df[col] > upper_bound)).sum()
                 df = df[(df[col] >= lower_bound) & (df[col] <= upper_bound)]
-                print(f"    Column '{col}': Removed {outliers_before} outliers")
+                print(f"    Column '{col}': Removed {outliers_before} outliers (rows: {len(df)})")
             
             elif method == "cap":
                 Q1 = df[col].quantile(0.25)
                 Q3 = df[col].quantile(0.75)
                 IQR = Q3 - Q1
+                
+                # Use SAME threshold as detection (1.5*IQR) or tighter
+                # Cap at 1.5*IQR to match detection threshold
                 lower_bound = Q1 - 1.5 * IQR
                 upper_bound = Q3 + 1.5 * IQR
+                
                 outliers_before = ((df[col] < lower_bound) | (df[col] > upper_bound)).sum()
+                
+                # Actually cap the values
                 df[col] = df[col].clip(lower=lower_bound, upper=upper_bound)
-                print(f"    Column '{col}': Capped {outliers_before} outliers")
+                
+                # Verify outliers are gone
+                outliers_after = ((df[col] < lower_bound) | (df[col] > upper_bound)).sum()
+                print(f"    Column '{col}': Capped {outliers_before} outliers → {outliers_after} remaining")
             
             elif method == "log_transform":
                 # Add small constant to avoid log(0)
@@ -238,9 +261,60 @@ class DataPreprocessor:
                     df[col] = np.log1p(df[col] - min_val + 1)
                 else:
                     df[col] = np.log1p(df[col])
-                print(f"    Column '{col}': Applied log transform")
+                print(f"    Column '{col}': Applied log transform to reduce outliers")
         
         return df
+    
+    def _handle_imbalanced_data(
+        self,
+        df: pd.DataFrame,
+        target_column: str,
+        method: str
+    ) -> pd.DataFrame:
+        """Handle imbalanced data using sampling techniques"""
+        if target_column not in df.columns:
+            print(f"    Target column '{target_column}' not found")
+            return df
+        
+        try:
+            from imblearn.over_sampling import SMOTE, RandomOverSampler
+            from imblearn.under_sampling import RandomUnderSampler
+            from sklearn.model_selection import train_test_split
+            
+            # Separate features and target
+            X = df.drop(columns=[target_column])
+            y = df[target_column]
+            
+            # Convert categorical features to numeric for SMOTE
+            X_numeric = pd.get_dummies(X, drop_first=True)
+            
+            if method == "smote":
+                sampler = SMOTE(random_state=42)
+                X_resampled, y_resampled = sampler.fit_resample(X_numeric, y)
+                print(f"    Applied SMOTE: {len(df)} → {len(y_resampled)} rows")
+            elif method == "oversample":
+                sampler = RandomOverSampler(random_state=42)
+                X_resampled, y_resampled = sampler.fit_resample(X_numeric, y)
+                print(f"    Applied Random Oversampling: {len(df)} → {len(y_resampled)} rows")
+            elif method == "undersample":
+                sampler = RandomUnderSampler(random_state=42)
+                X_resampled, y_resampled = sampler.fit_resample(X_numeric, y)
+                print(f"    Applied Random Undersampling: {len(df)} → {len(y_resampled)} rows")
+            else:
+                print(f"    Unknown method: {method}")
+                return df
+            
+            # Reconstruct dataframe
+            df_resampled = pd.DataFrame(X_resampled, columns=X_numeric.columns)
+            df_resampled[target_column] = y_resampled
+            return df_resampled
+            
+        except ImportError:
+            print(f"    imbalanced-learn not installed. Install with: pip install imbalanced-learn")
+            return df
+        except Exception as e:
+            print(f"    Failed to apply {method}: {str(e)}")
+            return df
     
     def _handle_categorical(
         self, 
@@ -248,7 +322,7 @@ class DataPreprocessor:
         columns: List[str], 
         method: str
     ) -> pd.DataFrame:
-        """Handle categorical data"""
+        """Handle categorical data issues"""
         for col in columns:
             if col not in df.columns:
                 continue
@@ -354,17 +428,80 @@ class DataPreprocessor:
         """Handle skewed distributions"""
         for col in columns:
             if col not in df.columns:
+                print(f"    Column '{col}' not found")
                 continue
             
-            if method == "log_transform":
-                df[col] = np.log1p(df[col] - df[col].min() + 1)
+            # Skip non-numeric columns
+            if not pd.api.types.is_numeric_dtype(df[col]):
+                print(f"    Skipping non-numeric column '{col}'")
+                continue
             
-            elif method == "sqrt_transform":
-                df[col] = np.sqrt(df[col] - df[col].min() + 1)
+            # Calculate skewness before
+            skew_before = df[col].skew()
+            unique_vals = df[col].nunique()
+            col_min, col_max = df[col].min(), df[col].max()
+            variation = col_max - col_min
             
-            elif method == "box_cox":
-                from scipy import stats
-                df[col] = stats.boxcox(df[col] - df[col].min() + 1)[0]
+            print(f"    Column '{col}': Original skewness = {skew_before:.2f}, unique values = {unique_vals}, variation = {variation:.4f}")
+            
+            # Skip if column has too few unique values OR insufficient variation
+            if unique_vals < 5:
+                print(f"    Column '{col}': Too few unique values ({unique_vals}), skipping transform")
+                continue
+            
+            if variation < 0.01:
+                print(f"    Column '{col}': Insufficient variation ({variation:.4f}), skipping transform")
+                continue
+            
+            # Store original column to restore if transform doesn't improve skewness
+            original_col = df[col].copy()
+            original_skew = abs(skew_before)
+            
+            # Always try log transform first
+            min_val = df[col].min()
+            if min_val <= 0:
+                df[col] = np.log1p(df[col] - min_val + 1)
+            else:
+                df[col] = np.log1p(df[col])
+            
+            # Check if log transform created constant/near-constant column
+            log_variation = df[col].max() - df[col].min()
+            if log_variation < 0.01:
+                print(f"    Column '{col}': Log transform created constant column, restoring original")
+                df[col] = original_col
+                continue
+                
+            skew_after_log = df[col].skew()
+            print(f"    Column '{col}': After log transform = {skew_after_log:.2f}")
+            
+            # If log transform didn't improve skewness, restore and skip
+            if abs(skew_after_log) >= original_skew * 0.95:  # Less than 5% improvement
+                print(f"    Column '{col}': Log transform didn't improve skewness, restoring original")
+                df[col] = original_col
+                continue
+            
+            # If still above threshold (1.0), try box-cox
+            if abs(skew_after_log) > 1.0:
+                try:
+                    from scipy import stats
+                    # Box-Cox requires positive values and variation
+                    min_val_bc = df[col].min()
+                    max_val_bc = df[col].max()
+                    
+                    # Check if there's enough variation for box-cox
+                    if max_val_bc - min_val_bc < 0.01:
+                        print(f"    Column '{col}': Insufficient variation for box-cox, keeping log transform")
+                        continue
+                    
+                    if min_val_bc <= 0:
+                        df[col] = df[col] - min_val_bc + 1
+                    df[col] = stats.boxcox(df[col])[0]
+                    skew_final = df[col].skew()
+                    print(f"    Column '{col}': After box-cox = {skew_final:.2f} ✓")
+                except Exception as e:
+                    print(f"    Column '{col}': Box-cox failed: {str(e)[:100]}, keeping log transform")
+            else:
+                print(f"    Column '{col}': Log transform sufficient ✓")
         
         return df
     
@@ -481,8 +618,13 @@ class DataPreprocessor:
         print(f"{'='*50}")
         processed_path = self.file_handler.save_processed_dataframe(file_id, df)
         
-        # Get final issue count
+        # Get final issue count and check for imbalanced data
         final_issues = self._analyze_dataframe(df)
+        has_imbalanced_data = any(issue.type == IssueType.IMBALANCED_DATA for issue in final_issues)
+        imbalanced_columns = None
+        if has_imbalanced_data:
+            imbalanced_issue = next(issue for issue in final_issues if issue.type == IssueType.IMBALANCED_DATA)
+            imbalanced_columns = imbalanced_issue.affected_columns
         
         return PreprocessResponse(
             file_id=file_id,
@@ -495,7 +637,9 @@ class DataPreprocessor:
                 "columns": len(df.columns),
                 "actions_applied": len([a for a in all_applied_actions if a["status"] == "success"]),
                 "iterations": iteration,
-                "remaining_issues": len(final_issues)
+                "remaining_issues": len(final_issues),
+                "has_imbalanced_data": has_imbalanced_data,
+                "imbalanced_columns": imbalanced_columns if has_imbalanced_data else []
             }
         )
     
@@ -504,14 +648,23 @@ class DataPreprocessor:
         issues = []
         
         # Check all issue types directly on DataFrame
+        outlier_issues = self.analyzer._check_outliers(df)
+        if outlier_issues:
+            print(f"    [DETECTION] Found {len(outlier_issues[0].affected_columns)} columns with outliers")
+        issues.extend(outlier_issues)
+        
+        skewness_issues = self.analyzer._check_skewness(df)
+        if skewness_issues:
+            print(f"    [DETECTION] Found {len(skewness_issues[0].affected_columns)} columns with skewness")
+        issues.extend(skewness_issues)
+        
         issues.extend(self.analyzer._check_missing_values(df))
         issues.extend(self.analyzer._check_duplicates(df))
-        issues.extend(self.analyzer._check_outliers(df))
         issues.extend(self.analyzer._check_data_types(df))
         issues.extend(self.analyzer._check_categorical_issues(df))
         issues.extend(self.analyzer._check_constant_features(df))
         issues.extend(self.analyzer._check_correlated_features(df))
-        issues.extend(self.analyzer._check_skewness(df))
+        # Skewness already checked above - don't check twice!
         issues.extend(self.analyzer._check_high_cardinality(df))
         issues.extend(self.analyzer._check_date_formats(df))
         issues.extend(self.analyzer._check_text_issues(df))
@@ -540,7 +693,7 @@ class DataPreprocessor:
         elif issue.type == IssueType.CONSTANT_VALUES:
             method = "remove"
         elif issue.type == IssueType.SKEWNESS:
-            method = "log_transform"
+            method = "box_cox"  # Use box-cox for better skewness reduction
         elif issue.type == IssueType.HIGH_CARDINALITY:
             method = "group_rare"
         elif issue.type == IssueType.CORRELATED_FEATURES:
@@ -548,9 +701,10 @@ class DataPreprocessor:
         elif issue.type == IssueType.INCONSISTENT_TYPES:
             method = "convert"
         elif issue.type == IssueType.IMBALANCED_DATA:
-            # Cannot auto-fix imbalanced data (requires sampling/SMOTE)
-            print(f"    → No automatic fix available for {issue.type.value}")
-            return None
+            # Auto-fix with SMOTE using first detected column as target
+            method = "smote"
+            # The target column is the first (and usually only) affected column
+            parameters = {"target_column": issue.affected_columns[0]}
         else:
             print(f"    → No handler for issue type: {issue.type.value}")
             return None

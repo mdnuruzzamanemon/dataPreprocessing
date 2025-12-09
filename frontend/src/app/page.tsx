@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import FileUpload from '@/components/FileUpload';
 import DataSummary from '@/components/DataSummary';
 import IssueList from '@/components/IssueList';
+import ImbalancedDataModal from '@/components/ImbalancedDataModal';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import {
@@ -16,6 +17,7 @@ import {
 import {
   analyzeFile,
   fixAllIssues,
+  fixImbalancedData,
   preprocessFile,
   downloadFile,
 } from '@/services/dataService';
@@ -28,6 +30,8 @@ export default function Home() {
   const [processing, setProcessing] = useState(false);
   const [selectedActions, setSelectedActions] = useState<PreprocessAction[]>([]);
   const [processedFileId, setProcessedFileId] = useState<string | null>(null);
+  const [showImbalancedModal, setShowImbalancedModal] = useState(false);
+  const [imbalancedColumns, setImbalancedColumns] = useState<string[]>([]);
 
   const handleUploadSuccess = async (uploadedFileInfo: FileInfo) => {
     setFileInfo(uploadedFileInfo);
@@ -76,12 +80,62 @@ export default function Home() {
     try {
       const result = await fixAllIssues(fileInfo.file_id);
       setProcessedFileId(result.file_id);
-      alert(`Successfully processed! ${result.applied_actions.length} actions applied.`);
+      
+      // Re-analyze the processed file to show new results
+      console.log('Re-analyzing processed file...');
+      const newAnalysis = await analyzeFile(result.file_id);
+      setAnalysis(newAnalysis);
+      console.log('New analysis:', newAnalysis);
+      
+      // Check if there's imbalanced data that needs user input
+      if (result.summary?.has_imbalanced_data && result.summary?.imbalanced_columns?.length > 0) {
+        // Get column names from imbalanced_columns or all unique columns from analysis issues
+        let columnsArray: string[] = result.summary.imbalanced_columns || [];
+        
+        // If not available, get all unique column names from issues
+        if (columnsArray.length === 0 && newAnalysis) {
+          const uniqueColumns = new Set<string>();
+          newAnalysis.issues.forEach(issue => {
+            issue.affected_columns.forEach(col => uniqueColumns.add(col));
+          });
+          columnsArray = Array.from(uniqueColumns);
+        }
+        
+        setImbalancedColumns(columnsArray);
+        setShowImbalancedModal(true);
+        alert(`Preprocessing complete! ${result.applied_actions.length} actions applied. Imbalanced data detected - please choose a sampling method or skip.`);
+      } else {
+        alert(`Successfully processed! ${result.applied_actions.length} actions applied. Remaining issues: ${newAnalysis.total_issues}`);
+      }
     } catch (error: any) {
+      console.error('Fix all error:', error);
       alert(error.response?.data?.detail || 'Failed to process file');
     } finally {
       setProcessing(false);
     }
+  };
+
+  const handleApplyImbalancedFix = async (targetColumn: string, method: string) => {
+    if (!processedFileId) return;
+    
+    try {
+      await fixImbalancedData(processedFileId, targetColumn, method);
+      
+      // Re-analyze after fixing imbalanced data
+      const newAnalysis = await analyzeFile(processedFileId);
+      setAnalysis(newAnalysis);
+      
+      alert(`Imbalanced data fix applied successfully! Remaining issues: ${newAnalysis.total_issues}`);
+    } catch (error: any) {
+      console.error('Imbalanced fix error:', error);
+      alert(error.response?.data?.detail || 'Failed to apply imbalanced data fix');
+      throw error; // Re-throw so modal can handle it
+    }
+  };
+
+  const handleSkipImbalancedFix = () => {
+    setShowImbalancedModal(false);
+    alert('Skipped imbalanced data fix. You can download the file with other fixes applied.');
   };
 
   const handleApplySelected = async () => {
@@ -139,7 +193,7 @@ export default function Home() {
         {fileInfo && (
           <div className="space-y-6">
             {/* Summary */}
-            <DataSummary fileInfo={fileInfo} analysis={analysis} />
+            <DataSummary fileInfo={fileInfo} analysis={analysis || undefined} />
 
             {/* Loading State */}
             {analyzing && (
@@ -224,6 +278,18 @@ export default function Home() {
           </div>
         )}
       </div>
+
+      {/* Imbalanced Data Modal */}
+      {showImbalancedModal && processedFileId && (
+        <ImbalancedDataModal
+          columns={imbalancedColumns}
+          fileId={processedFileId}
+          onClose={() => setShowImbalancedModal(false)}
+          onApply={handleApplyImbalancedFix}
+          onSkip={handleSkipImbalancedFix}
+        />
+      )}
     </main>
   );
 }
+
