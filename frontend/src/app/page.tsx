@@ -38,7 +38,7 @@ export default function Home() {
     setAnalysis(null);
     setSelectedActions([]);
     setProcessedFileId(null);
-    
+
     // Automatically analyze
     setAnalyzing(true);
     try {
@@ -80,18 +80,18 @@ export default function Home() {
     try {
       const result = await fixAllIssues(fileInfo.file_id);
       setProcessedFileId(result.file_id);
-      
+
       // Re-analyze the processed file to show new results
       console.log('Re-analyzing processed file...');
       const newAnalysis = await analyzeFile(result.file_id);
       setAnalysis(newAnalysis);
       console.log('New analysis:', newAnalysis);
-      
+
       // Check if there's imbalanced data that needs user input
       if (result.summary?.has_imbalanced_data && result.summary?.imbalanced_columns?.length > 0) {
         // Get column names from imbalanced_columns or all unique columns from analysis issues
         let columnsArray: string[] = result.summary.imbalanced_columns || [];
-        
+
         // If not available, get all unique column names from issues
         if (columnsArray.length === 0 && newAnalysis) {
           const uniqueColumns = new Set<string>();
@@ -100,7 +100,7 @@ export default function Home() {
           });
           columnsArray = Array.from(uniqueColumns);
         }
-        
+
         setImbalancedColumns(columnsArray);
         setShowImbalancedModal(true);
         alert(`Preprocessing complete! ${result.applied_actions.length} actions applied. Imbalanced data detected - please choose a sampling method or skip.`);
@@ -117,14 +117,14 @@ export default function Home() {
 
   const handleApplyImbalancedFix = async (targetColumn: string, method: string) => {
     if (!processedFileId) return;
-    
+
     try {
       await fixImbalancedData(processedFileId, targetColumn, method);
-      
+
       // Re-analyze after fixing imbalanced data
       const newAnalysis = await analyzeFile(processedFileId);
       setAnalysis(newAnalysis);
-      
+
       alert(`Imbalanced data fix applied successfully! Remaining issues: ${newAnalysis.total_issues}`);
     } catch (error: any) {
       console.error('Imbalanced fix error:', error);
@@ -147,10 +147,28 @@ export default function Home() {
         actions: selectedActions,
       });
       setProcessedFileId(result.file_id);
-      alert(
-        `Successfully processed! ${result.applied_actions.filter((a) => a.status === 'success').length} actions applied.`
-      );
+
+      // Use the analysis from the response if available, otherwise re-analyze
+      if (result.analysis) {
+        console.log('Using analysis from response:', result.analysis);
+        setAnalysis(result.analysis);
+        alert(
+          `Successfully processed! ${result.applied_actions.filter((a) => a.status === 'success').length} actions applied. Remaining issues: ${result.analysis.total_issues}`
+        );
+      } else {
+        // Fallback: Re-analyze the processed file to show new results
+        console.log('Re-analyzing processed file...');
+        const newAnalysis = await analyzeFile(result.file_id);
+        setAnalysis(newAnalysis);
+        alert(
+          `Successfully processed! ${result.applied_actions.filter((a) => a.status === 'success').length} actions applied. Remaining issues: ${newAnalysis.total_issues}`
+        );
+      }
+
+      // Clear selected actions after applying
+      setSelectedActions([]);
     } catch (error: any) {
+      console.error('Apply selected error:', error);
       alert(error.response?.data?.detail || 'Failed to process file');
     } finally {
       setProcessing(false);

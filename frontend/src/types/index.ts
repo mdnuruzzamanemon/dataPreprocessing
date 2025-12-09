@@ -75,6 +75,7 @@ export interface PreprocessResponse {
   }>;
   download_url: string;
   summary: Record<string, any>;
+  analysis?: AnalysisResponse;  // Full analysis results after preprocessing
 }
 
 export interface DataPreview {
