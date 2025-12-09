@@ -66,3 +66,4 @@ class PreprocessResponse(BaseModel):
     applied_actions: List[Dict[str, Any]]
     download_url: str
     summary: Dict[str, Any]
+    analysis: Optional['AnalysisResponse'] = None  # Full analysis results after preprocessing

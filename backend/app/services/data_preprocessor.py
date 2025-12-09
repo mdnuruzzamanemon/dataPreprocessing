@@ -23,27 +23,65 @@ class DataPreprocessor:
         file_id: str, 
         actions: List[PreprocessAction]
     ) -> PreprocessResponse:
-        """Apply preprocessing actions to dataset"""
-        print(f"\n=== PREPROCESSING START ===")
+        """Apply user-selected preprocessing actions to dataset"""
+        print(f"\n=== APPLYING SELECTED ACTIONS ===")
         print(f"File ID: {file_id}")
         print(f"Number of actions: {len(actions)}")
         
+        # Load failed columns metadata
+        failed_skewness_columns = self._load_failed_columns(file_id)
+        
         df = self.file_handler.load_dataframe(file_id)
-        df = df.copy()  # Create a copy to avoid mutation issues
+        df = df.copy()
         original_rows = len(df)
         print(f"Original rows: {original_rows}")
-        print(f"Missing values before: {df.isna().sum().sum()}")
         applied_actions = []
         
-        # Apply each action
+        # Apply each selected action
         for action in actions:
             try:
-                print(f"\nApplying action:")
-                print(f"  Issue Type: {action.issue_type}")
-                print(f"  Columns: {action.columns}")
-                print(f"  Method: {action.method}")
+                print(f"\n→ Applying {action.issue_type.value} fix on {len(action.columns)} columns using '{action.method}'")
                 
+                # Handle skewness with failed column filtering
+                if action.issue_type == IssueType.SKEWNESS:
+                    # Filter out columns that have already failed
+                    fixable_columns = [col for col in action.columns if col not in failed_skewness_columns]
+                    if not fixable_columns:
+                        print(f"    → Skipping - all columns previously failed transformation")
+                        applied_actions.append({
+                            "issue_type": action.issue_type.value,
+                            "columns": action.columns,
+                            "method": action.method,
+                            "status": "skipped",
+                            "reason": "all_columns_unfixable"
+                        })
+                        continue
+                    action.columns = fixable_columns
+                
+                df_before = df.copy()
                 df = self._apply_action(df, action)
+                
+                # Check if skewness transformation actually worked
+                if action.issue_type == IssueType.SKEWNESS:
+                    if df.equals(df_before):
+                        print(f"    ⚠️ Skewness transformation failed for {action.columns}")
+                        print(f"    → Removing unfixable columns: {action.columns}")
+                        
+                        # Drop unfixable columns
+                        df = df.drop(columns=action.columns, errors='ignore')
+                        
+                        # Save to metadata
+                        failed_skewness_columns.update(action.columns)
+                        self._save_failed_columns(file_id, failed_skewness_columns)
+                        
+                        applied_actions.append({
+                            "issue_type": action.issue_type.value,
+                            "columns": action.columns,
+                            "method": "remove_column",
+                            "status": "removed",
+                            "reason": "transformation_ineffective"
+                        })
+                        continue
                 
                 print(f"  ✓ Success - Rows after: {len(df)}")
                 applied_actions.append({
@@ -53,7 +91,7 @@ class DataPreprocessor:
                     "status": "success"
                 })
             except Exception as e:
-                print(f"  ✗ Failed: {str(e)}")
+                print(f"  ✗ Failed: {str(e)}") 
                 applied_actions.append({
                     "issue_type": action.issue_type.value,
                     "columns": action.columns,
@@ -63,17 +101,53 @@ class DataPreprocessor:
                 })
         
         # Save processed data
-        print(f"\n=== FINAL VERIFICATION BEFORE SAVE ===")
-        print(f"DataFrame shape: {df.shape}")
-        print(f"Missing values after all actions: {df.isna().sum().sum()}")
-        print(f"Missing values per column:")
-        for col in df.columns:
-            na_count = df[col].isna().sum()
-            if na_count > 0:
-                print(f"  {col}: {na_count}")
-        
         processed_path = self.file_handler.save_processed_dataframe(file_id, df)
+        
+        # Re-analyze to get remaining issues (full analysis for frontend)
+        remaining_issues_analysis = self._analyze_dataframe(df, exclude_skewness_columns=failed_skewness_columns)
+        remaining_issues_count = len(remaining_issues_analysis)
+        
+        print(f"\n✅ Selected actions applied successfully")
+        print(f"   Remaining issues: {remaining_issues_count}")
         print(f"=== PREPROCESSING COMPLETE ===\n")
+        
+        # Create full AnalysisResponse for frontend (same format as /api/analyze)
+        from app.models.schemas import AnalysisResponse, FileInfo
+        import os
+        
+        file_path = self.file_handler._get_file_path(file_id)
+        if not os.path.exists(file_path):
+            # Use processed file path
+            file_path = processed_path
+        file_size = os.path.getsize(file_path)
+        file_ext = os.path.splitext(file_path)[1][1:]
+        
+        file_info = FileInfo(
+            file_id=file_id,
+            filename=f"{file_id}.{file_ext}",
+            rows=len(df),
+            columns=len(df.columns),
+            size=file_size,
+            file_type=file_ext
+        )
+        
+        # Create summary for analysis
+        analysis_summary = {}
+        for issue in remaining_issues_analysis:
+            issue_type = issue.type.value
+            if issue_type in analysis_summary:
+                analysis_summary[issue_type] += 1
+            else:
+                analysis_summary[issue_type] = 1
+        
+        # Create full AnalysisResponse
+        analysis_response = AnalysisResponse(
+            file_id=file_id,
+            file_info=file_info,
+            issues=remaining_issues_analysis,
+            total_issues=remaining_issues_count,
+            summary=analysis_summary
+        )
         
         return PreprocessResponse(
             file_id=file_id,
@@ -84,15 +158,119 @@ class DataPreprocessor:
             summary={
                 "rows_removed": original_rows - len(df),
                 "columns": len(df.columns),
-                "actions_applied": len([a for a in applied_actions if a["status"] == "success"])
-            }
+                "actions_applied": len([a for a in applied_actions if a["status"] == "success"]),
+                "remaining_issues": remaining_issues_count
+            },
+            analysis=analysis_response  # Full analysis for frontend to update UI
         )
+    
+    def _normalize_method_name(self, method: str, issue_type: IssueType) -> str:
+        """Normalize frontend method names to backend format"""
+        method_lower = method.lower().replace('_', ' ').replace('(', '').replace(')', '')
+        
+        # Handle missing values methods
+        if issue_type == IssueType.MISSING_VALUES:
+            if 'mean' in method_lower:
+                return 'mean'
+            elif 'median' in method_lower:
+                return 'median'
+            elif 'mode' in method_lower:
+                return 'mode'
+            elif 'forward' in method_lower:
+                return 'forward_fill'
+            elif 'backward' in method_lower:
+                return 'backward_fill'
+            elif 'drop' in method_lower:
+                return 'drop'
+        
+        # Handle duplicates
+        elif issue_type == IssueType.DUPLICATES:
+            return 'remove'
+        
+        # Handle outliers methods
+        elif issue_type == IssueType.OUTLIERS:
+            if 'cap' in method_lower or 'iqr' in method_lower:
+                return 'cap'
+            elif 'remove' in method_lower:
+                return 'remove'
+            elif 'log' in method_lower:
+                return 'log'
+        
+        # Handle skewness methods
+        elif issue_type == IssueType.SKEWNESS:
+            if 'log' in method_lower:
+                return 'log'
+            elif 'sqrt' in method_lower or 'square root' in method_lower:
+                return 'sqrt'
+            elif 'box' in method_lower or 'cox' in method_lower:
+                return 'box_cox'
+        
+        # Handle high cardinality
+        elif issue_type == IssueType.HIGH_CARDINALITY:
+            if 'group' in method_lower or 'rare' in method_lower:
+                return 'group_rare'
+            elif 'target' in method_lower:
+                return 'target_encoding'
+            elif 'remove' in method_lower:
+                return 'remove'
+        
+        # Handle categorical inconsistencies
+        elif issue_type == IssueType.CATEGORICAL_INCONSISTENCIES:
+            if 'normalize' in method_lower or 'naming' in method_lower:
+                return 'normalize'
+            elif 'label' in method_lower:
+                return 'label_encode'  # Match _handle_categorical method name
+            elif 'one hot' in method_lower or 'onehot' in method_lower:
+                return 'one_hot'
+        
+        # Handle inconsistent types
+        elif issue_type == IssueType.INCONSISTENT_TYPES:
+            return 'convert'
+        
+        # Handle constant values
+        elif issue_type == IssueType.CONSTANT_VALUES:
+            return 'remove'
+        
+        # Handle correlated features
+        elif issue_type == IssueType.CORRELATED_FEATURES:
+            if 'pca' in method_lower:
+                return 'pca'
+            else:
+                return 'remove'
+        
+        # Handle date formats
+        elif issue_type == IssueType.WRONG_DATE_FORMAT:
+            if 'extract' in method_lower or 'component' in method_lower:
+                return 'extract_components'
+            else:
+                return 'standardize'
+        
+        # Handle noisy text
+        elif issue_type == IssueType.NOISY_TEXT:
+            if 'lowercase' in method_lower:
+                return 'lowercase'
+            elif 'punctuation' in method_lower:
+                return 'remove_punctuation'
+            elif 'stopword' in method_lower:
+                return 'remove_stopwords'
+        
+        # Handle imbalanced data
+        elif issue_type == IssueType.IMBALANCED_DATA:
+            if 'smote' in method_lower:
+                return 'smote'
+            elif 'undersample' in method_lower:
+                return 'undersample'
+            elif 'oversample' in method_lower:
+                return 'oversample'
+        
+        # Default: return as-is
+        return method
     
     def _apply_action(self, df: pd.DataFrame, action: PreprocessAction) -> pd.DataFrame:
         """Apply a single preprocessing action"""
         issue_type = action.issue_type
         columns = action.columns
-        method = action.method
+        method = self._normalize_method_name(action.method, issue_type)
         
         print(f"  → Applying {issue_type.value} fix on {len(columns)} columns using method '{method}'")
         
@@ -125,10 +303,19 @@ class DataPreprocessor:
         elif issue_type == IssueType.INCONSISTENT_TYPES:
             return self._handle_inconsistent_types(df, columns)
         elif issue_type == IssueType.IMBALANCED_DATA:
-            target_column = action.parameters.get("target_column", columns[0])
-            print(f"    Calling _handle_imbalanced_data with target: {target_column}")
+            target_column = action.parameters.get("target_column", columns[0] if columns else None)
+            print(f"    → Imbalanced data fix:")
+            print(f"       Target column: {target_column}")
+            print(f"       Method: {method}")
+            print(f"       Columns from action: {columns}")
+            print(f"       Parameters: {action.parameters}")
+            
+            if not target_column:
+                print(f"    ⚠️  ERROR: No target column specified!")
+                return df
+            
             result = self._handle_imbalanced_data(df, target_column, method)
-            print(f"    Imbalanced data handler returned DataFrame with {len(result)} rows")
+            print(f"    ✓ Imbalanced data handler returned DataFrame with {len(result)} rows")
             return result
         else:
             print(f"    WARNING: No handler for issue type {issue_type}")
@@ -155,7 +342,13 @@ class DataPreprocessor:
                 print(f"    No missing values to fix")
                 continue
             
-            if method == "mean":
+            # Auto-adjust method for non-numeric columns
+            actual_method = method
+            if method in ["mean", "median"] and not pd.api.types.is_numeric_dtype(df[col]):
+                actual_method = "mode"
+                print(f"    ⚠️  Auto-adjusted: '{method}' → 'mode' (column is non-numeric)")
+            
+            if actual_method == "mean":
                 if pd.api.types.is_numeric_dtype(df[col]):
                     mean_val = df[col].mean()
                     df[col] = df[col].fillna(mean_val)
@@ -163,7 +356,7 @@ class DataPreprocessor:
                 else:
                     print(f"    WARNING: Cannot use mean on non-numeric column, skipping")
                     
-            elif method == "median":
+            elif actual_method == "median":
                 if pd.api.types.is_numeric_dtype(df[col]):
                     median_val = df[col].median()
                     df[col] = df[col].fillna(median_val)
@@ -171,7 +364,7 @@ class DataPreprocessor:
                 else:
                     print(f"    WARNING: Cannot use median on non-numeric column, skipping")
                     
-            elif method == "mode":
+            elif actual_method == "mode":
                 mode_val = df[col].mode()
                 if not mode_val.empty:
                     df[col] = df[col].fillna(mode_val[0])
@@ -179,26 +372,27 @@ class DataPreprocessor:
                 else:
                     print(f"    WARNING: No mode found, skipping")
                     
-            elif method == "forward_fill":
+            elif actual_method == "forward_fill":
                 df[col] = df[col].ffill()
                 print(f"    Applied forward fill")
                 
-            elif method == "backward_fill":
+            elif actual_method == "backward_fill":
                 df[col] = df[col].bfill()
                 print(f"    Applied backward fill")
                 
-            elif method == "drop":
+            elif actual_method == "drop":
                 rows_before = len(df)
                 df = df.dropna(subset=[col])
                 rows_dropped = rows_before - len(df)
                 print(f"    Dropped {rows_dropped} rows")
             
             missing_after = df[col].isna().sum()
-            print(f"    After {method}: {missing_after} missing values (fixed {missing_before - missing_after})")
+            fixed_count = missing_before - missing_after
+            print(f"    After {actual_method}: {missing_after} missing values (fixed {fixed_count})")
             
-            # Verify the fix worked
-            if missing_after > 0 and method != "forward_fill" and method != "backward_fill":
-                print(f"    WARNING: Still has {missing_after} missing values after {method}!")
+            # Only warn if we actually tried to fix it and failed
+            if missing_after > 0 and actual_method not in ["forward_fill", "backward_fill"] and fixed_count == 0:
+                print(f"    WARNING: Still has {missing_after} missing values after {actual_method}!")
         
         return df
     
@@ -285,6 +479,14 @@ class DataPreprocessor:
             from imblearn.under_sampling import RandomUnderSampler
             from sklearn.model_selection import train_test_split
             
+            # Check for missing values in target column
+            missing_in_target = df[target_column].isna().sum()
+            if missing_in_target > 0:
+                print(f"    ⚠️  Target column '{target_column}' has {missing_in_target} missing values")
+                print(f"    → Dropping rows with missing target values")
+                df = df.dropna(subset=[target_column])
+                print(f"    → Rows after dropping: {len(df)}")
+            
             # Separate features and target
             X = df.drop(columns=[target_column])
             y = df[target_column]
@@ -293,17 +495,35 @@ class DataPreprocessor:
             X_numeric = pd.get_dummies(X, drop_first=True)
             
             if method == "smote":
-                sampler = SMOTE(random_state=42)
+                # Check class distribution
+                class_counts = y.value_counts()
+                min_samples = class_counts.min()
+                print(f"    Class distribution: {class_counts.to_dict()}")
+                print(f"    Minimum samples in any class: {min_samples}")
+                
+                # SMOTE requires at least 2 samples in minority class
+                # and k_neighbors must be less than minority class size
+                if min_samples < 2:
+                    print(f"    ⚠️  SMOTE requires at least 2 samples per class, found {min_samples}")
+                    print(f"    → Falling back to RandomOverSampler")
+                    sampler = RandomOverSampler(random_state=42)
+                else:
+                    # Adjust k_neighbors based on minority class size
+                    # Default k_neighbors=5, but must be < minority class size
+                    k_neighbors = min(5, min_samples - 1)
+                    print(f"    Using k_neighbors={k_neighbors} for SMOTE")
+                    sampler = SMOTE(random_state=42, k_neighbors=k_neighbors)
+                
                 X_resampled, y_resampled = sampler.fit_resample(X_numeric, y)
-                print(f"    Applied SMOTE: {len(df)} → {len(y_resampled)} rows")
+                print(f"    ✓ Applied SMOTE: {len(df)} → {len(y_resampled)} rows")
             elif method == "oversample":
                 sampler = RandomOverSampler(random_state=42)
                 X_resampled, y_resampled = sampler.fit_resample(X_numeric, y)
-                print(f"    Applied Random Oversampling: {len(df)} → {len(y_resampled)} rows")
+                print(f"    ✓ Applied Random Oversampling: {len(df)} → {len(y_resampled)} rows")
             elif method == "undersample":
                 sampler = RandomUnderSampler(random_state=42)
                 X_resampled, y_resampled = sampler.fit_resample(X_numeric, y)
-                print(f"    Applied Random Undersampling: {len(df)} → {len(y_resampled)} rows")
+                print(f"    ✓ Applied Random Undersampling: {len(df)} → {len(y_resampled)} rows")
             else:
                 print(f"    Unknown method: {method}")
                 return df
@@ -318,6 +538,8 @@ class DataPreprocessor:
             return df
         except Exception as e:
             print(f"    Failed to apply {method}: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return df
     
     def _handle_categorical(
