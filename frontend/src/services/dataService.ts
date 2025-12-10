@@ -63,7 +63,9 @@ export const fixImbalancedData = async (
 };
 
 export const downloadFile = (fileId: string): string => {
-  return `${apiClient.defaults.baseURL}/api/download/${fileId}`;
+  const token = localStorage.getItem('access_token');
+  const baseUrl = `${apiClient.defaults.baseURL}/api/download/${fileId}`;
+  return token ? `${baseUrl}?token=${encodeURIComponent(token)}` : baseUrl;
 };
 
 export const deleteFile = async (fileId: string): Promise<void> => {

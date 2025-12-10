@@ -1,6 +1,10 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy.orm import Session
 from app.models.schemas import AnalysisResponse
+from app.models.database import User, File as DBFile
 from app.services.data_analyzer import DataAnalyzer
+from app.database import get_db
+from app.api.dependencies import get_current_user
 import json
 import os
 
@@ -8,10 +12,23 @@ router = APIRouter()
 analyzer = DataAnalyzer()
 
 @router.get("/analyze/{file_id}", response_model=AnalysisResponse)
-async def analyze_file(file_id: str):
+async def analyze_file(
+    file_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """
-    Analyze uploaded file for data quality issues
+    Analyze uploaded file for data quality issues (requires authentication)
     """
+    # Verify file belongs to user
+    db_file = db.query(DBFile).filter(
+        DBFile.file_id == file_id,
+        DBFile.user_id == current_user.id
+    ).first()
+    
+    if not db_file:
+        raise HTTPException(status_code=404, detail="File not found")
+    
     try:
         # Load failed columns metadata if it exists
         metadata_dir = "temp/metadata"

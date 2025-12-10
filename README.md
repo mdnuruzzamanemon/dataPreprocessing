@@ -1,244 +1,209 @@
-# Data Preprocessing Platform
+# Data Preprocessing Platform - Quick Start Guide
 
-A comprehensive data preprocessing platform that automatically detects and fixes common data quality issues in CSV and Excel files.
+## Prerequisites
 
-## 🚀 Features
+Before running the setup scripts, ensure you have:
 
-### Data Issue Detection
-- ✅ Missing values
-- ✅ Duplicate rows
-- ✅ Outliers detection
-- ✅ Imbalanced data
-- ✅ Inconsistent data types
-- ✅ Categorical inconsistencies
-- ✅ Invalid ranges
-- ✅ Data skewness
-- ✅ High cardinality features
-- ✅ Constant-value features
-- ✅ Correlated features
-- ✅ Wrong date formats
-- ✅ Encoding issues
-- ✅ Mixed units
-- ✅ Noisy text
+1. **Python 3.9+** installed
+2. **Node.js 18+** installed
+3. **PostgreSQL** installed and running
 
-### Preprocessing Options
-- **Missing Values**: Mean/Median/Mode fill, Forward/Backward fill, Drop rows
-- **Outliers**: Remove, Cap using IQR, Log transform
-- **Duplicates**: Remove duplicate rows
-- **Categorical**: Label/OneHot encoding, Normalize naming
-- **Dates**: Format conversion, Feature extraction (year, month, day)
-- **Scaling**: MinMax, Standard, Robust scalers
-- **Text Cleaning**: Lowercase, Remove punctuation, Remove stopwords
+## Quick Setup (Automated)
 
-## 🏗️ Architecture
+### Step 1: Create PostgreSQL Database
 
-```
-├── backend/          # Python FastAPI backend
-│   ├── app/
-│   │   ├── api/      # API endpoints
-│   │   ├── core/     # Core configurations
-│   │   ├── models/   # Data models
-│   │   ├── services/ # Business logic
-│   │   └── utils/    # Helper functions
-│   └── tests/        # Backend tests
-│
-└── frontend/         # Next.js React frontend
-    ├── src/
-    │   ├── app/      # Next.js app directory
-    │   ├── components/ # React components
-    │   ├── services/ # API services
-    │   ├── types/    # TypeScript types
-    │   └── utils/    # Helper functions
-    └── public/       # Static assets
+```bash
+# Open PostgreSQL command line (psql)
+psql -U postgres
+
+# Create database
+CREATE DATABASE data_preprocessing;
+
+# Exit
+\q
 ```
 
-## 🛠️ Tech Stack
+### Step 2: Configure Environment
 
-### Backend
-- **Framework**: FastAPI (Python 3.9+)
-- **Data Processing**: Pandas, NumPy, SciPy
-- **Machine Learning**: Scikit-learn
-- **File Handling**: openpyxl, xlrd
+1. Copy the example environment file:
+   ```bash
+   cd backend
+   copy .env.example .env
+   ```
 
-### Frontend
-- **Framework**: Next.js 14 (App Router)
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS
-- **UI Components**: shadcn/ui
-- **State Management**: React Hooks
-- **HTTP Client**: Axios
+2. Edit `backend/.env` and update:
+   ```env
+   DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/data_preprocessing
+   SECRET_KEY=your-generated-secret-key-here
+   ```
 
-## 📦 Installation
+   To generate a secure secret key, run in Python:
+   ```python
+   import secrets
+   print(secrets.token_hex(32))
+   ```
 
-### Prerequisites
-- Python 3.9 or higher
-- Node.js 18 or higher
-- npm or yarn
+### Step 3: Run Setup Script
+
+**Windows (PowerShell):**
+```powershell
+.\setup.ps1
+```
+
+**Linux/Mac:**
+```bash
+chmod +x setup.sh
+./setup.sh
+```
+
+This will:
+- ✅ Check Python and Node.js installations
+- ✅ Create Python virtual environment
+- ✅ Install all backend dependencies
+- ✅ **Initialize database tables automatically**
+- ✅ Install all frontend dependencies
+
+### Step 4: Start the Application
+
+**Windows (PowerShell):**
+```powershell
+.\start.ps1
+```
+
+**Linux/Mac:**
+```bash
+./start.sh
+```
+
+This will start both servers in separate windows.
+
+### Step 5: Access the Application
+
+Open your browser and go to:
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000/docs
+
+## What the Setup Script Does
+
+The `setup.ps1` script automatically:
+
+1. ✅ Verifies Python and Node.js are installed
+2. ✅ Creates a Python virtual environment
+3. ✅ Installs all Python dependencies from `requirements.txt`
+4. ✅ **Runs `init_db.py` to create database tables**
+5. ✅ Installs all Node.js dependencies
+
+### Database Initialization
+
+The setup script automatically runs `python init_db.py` which creates:
+- `users` table (for authentication)
+- `files` table (for file tracking)
+
+If database initialization fails, the script will:
+- Show a warning (not an error)
+- Continue with the rest of the setup
+- Provide instructions to manually run `python init_db.py` later
+
+## Manual Setup (If Needed)
+
+If the automated setup fails or you prefer manual setup:
 
 ### Backend Setup
-
 ```bash
 cd backend
-
-# Create virtual environment
 python -m venv venv
-
-# Activate virtual environment
-# Windows
-venv\Scripts\activate
-# Linux/Mac
-source venv/bin/activate
-
-# Install dependencies
+.\venv\Scripts\Activate.ps1  # Windows
+source venv/bin/activate      # Linux/Mac
 pip install -r requirements.txt
-
-# Run the server
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+python init_db.py
 ```
 
-The backend API will be available at `http://localhost:8000`
-API documentation at `http://localhost:8000/docs`
-
 ### Frontend Setup
-
 ```bash
 cd frontend
-
-# Install dependencies
 npm install
+```
 
-# Run development server
+### Start Servers Manually
+
+**Backend:**
+```bash
+cd backend
+.\venv\Scripts\Activate.ps1  # Windows
+source venv/bin/activate      # Linux/Mac
+uvicorn app.main:app --reload
+```
+
+**Frontend:**
+```bash
+cd frontend
 npm run dev
 ```
 
-The frontend will be available at `http://localhost:3000`
+## Troubleshooting
 
-## 🎯 Usage
+### Database Connection Error
 
-1. **Upload Dataset**: Upload your CSV or Excel file through the web interface
-2. **Detect Issues**: The system automatically analyzes and detects all data quality issues
-3. **Review Issues**: Browse through detected issues with detailed statistics
-4. **Apply Fixes**: 
-   - Use "Fix All" to automatically apply recommended fixes to all issues
-   - Or select specific fixes for individual issues
-5. **Download**: Download the cleaned dataset
+If you see database connection errors:
 
-## 📡 API Endpoints
+1. **Check PostgreSQL is running:**
+   ```bash
+   # Windows
+   Get-Service postgresql*
+   
+   # Linux/Mac
+   sudo systemctl status postgresql
+   ```
 
-### POST `/api/upload`
-Upload a CSV or Excel file for analysis
+2. **Verify database exists:**
+   ```bash
+   psql -U postgres -l
+   ```
 
-**Request**: `multipart/form-data`
-```json
-{
-  "file": "<file>"
-}
-```
+3. **Check DATABASE_URL in `.env`:**
+   - Correct format: `postgresql://username:password@host:port/database`
+   - Example: `postgresql://postgres:mypassword@localhost:5432/data_preprocessing`
 
-**Response**:
-```json
-{
-  "file_id": "uuid",
-  "filename": "data.csv",
-  "rows": 1000,
-  "columns": 25
-}
-```
+4. **Manually initialize database:**
+   ```bash
+   cd backend
+   .\venv\Scripts\Activate.ps1
+   python init_db.py
+   ```
 
-### GET `/api/analyze/{file_id}`
-Analyze uploaded file for data quality issues
+### Import Errors
 
-**Response**:
-```json
-{
-  "file_id": "uuid",
-  "issues": [
-    {
-      "type": "missing_values",
-      "severity": "high",
-      "affected_columns": ["age", "salary"],
-      "details": {...}
-    }
-  ]
-}
-```
-
-### POST `/api/preprocess/{file_id}`
-Apply preprocessing actions to the dataset
-
-**Request**:
-```json
-{
-  "actions": [
-    {
-      "issue_type": "missing_values",
-      "columns": ["age"],
-      "method": "mean"
-    }
-  ]
-}
-```
-
-### GET `/api/download/{file_id}`
-Download the processed dataset
-
-## 🧪 Testing
-
-### Backend Tests
+If you see Python import errors:
 ```bash
 cd backend
-pytest tests/ -v
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
 ```
 
-### Frontend Tests
-```bash
-cd frontend
-npm test
-```
+### Port Already in Use
 
-## 🔧 Configuration
+If port 8000 or 3000 is already in use:
+- **Backend**: Change port with `uvicorn app.main:app --reload --port 8001`
+- **Frontend**: Change port in `package.json` or use `npm run dev -- -p 3001`
 
-### Backend Configuration
-Edit `backend/app/core/config.py`:
-- `MAX_UPLOAD_SIZE`: Maximum file size (default: 100MB)
-- `ALLOWED_EXTENSIONS`: Allowed file types
-- `TEMP_UPLOAD_DIR`: Temporary upload directory
+## First Time Usage
 
-### Frontend Configuration
-Edit `frontend/.env.local`:
-```env
-NEXT_PUBLIC_API_URL=http://localhost:8000
-```
+1. **Navigate to** http://localhost:3000
+2. **Click "Sign up"** to create an account
+3. **Login** with your credentials
+4. **Upload a CSV/Excel file** to start preprocessing
 
-## 📝 Development
+## Features
 
-### Code Style
-- **Backend**: Follow PEP 8 guidelines, use Black for formatting
-- **Frontend**: ESLint + Prettier configuration included
+✅ User authentication with JWT (HTTP-only cookies)
+✅ Automatic data quality issue detection
+✅ One-click fix for all issues
+✅ Selective issue fixing
+✅ User-specific file management
+✅ Secure file storage
 
-### Git Workflow
-1. Create feature branch from `main`
-2. Make changes with clear commit messages
-3. Submit pull request with description
+## Support
 
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 👥 Authors
-
-- Your Name - Initial work
-
-## 🙏 Acknowledgments
-
-- FastAPI for the amazing web framework
-- Next.js team for the React framework
-- Pandas community for data processing capabilities
+For detailed documentation, see:
+- `SETUP_AUTH.md` - Authentication system setup
+- `PROJECT_COMPLETE.md` - Complete project documentation

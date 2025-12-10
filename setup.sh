@@ -52,10 +52,28 @@ echo -e "${YELLOW}Installing Python dependencies...${NC}"
 pip install -r requirements.txt
 
 if [ $? -eq 0 ]; then
+    echo -e "${GREEN}✓ Python dependencies installed!${NC}"
+else
+    echo -e "${RED}✗ Failed to install Python dependencies!${NC}"
+    exit 1
+fi
+
+echo ""
+echo -e "${YELLOW}Initializing database...${NC}"
+python3 init_db.py
+
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}✓ Database initialized successfully!${NC}"
     echo -e "${GREEN}✓ Backend setup completed!${NC}"
 else
-    echo -e "${RED}✗ Backend setup failed!${NC}"
-    exit 1
+    echo -e "${YELLOW}⚠ Database initialization failed!${NC}"
+    echo -e "${YELLOW}  Please ensure:${NC}"
+    echo -e "  1. PostgreSQL is installed and running"
+    echo -e "  2. Database 'data_preprocessing' exists"
+    echo -e "  3. DATABASE_URL in .env is correct"
+    echo ""
+    echo -e "  You can manually initialize later with: python3 init_db.py"
+    echo ""
 fi
 
 cd ..
@@ -85,7 +103,12 @@ echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}Setup Complete!${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
-echo -e "${CYAN}Next steps:${NC}"
+echo -e "${CYAN}Before starting the servers:${NC}"
+echo -e "1. Ensure PostgreSQL is installed and running"
+echo -e "2. Create database: createdb data_preprocessing"
+echo -e "3. Update backend/.env with your database credentials"
+echo ""
+echo -e "${CYAN}To start the application:${NC}"
 echo -e "1. Start backend:  ${NC}cd backend && source venv/bin/activate && uvicorn app.main:app --reload"
 echo -e "2. Start frontend: ${NC}cd frontend && npm run dev"
 echo ""

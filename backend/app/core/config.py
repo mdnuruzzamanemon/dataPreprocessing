@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Data Preprocessing Platform"
     API_VERSION: str = "1.0.0"
     
-    # CORS
+    # CORS - Must specify exact origins when using credentials (cookies)
     ALLOWED_ORIGINS: List[str] = [
         "http://localhost:3000",
         "http://127.0.0.1:3000"
@@ -23,6 +23,23 @@ class Settings(BaseSettings):
     HIGH_CARDINALITY_THRESHOLD: int = 50
     CORRELATION_THRESHOLD: float = 0.9
     SKEWNESS_THRESHOLD: float = 1.0
+    
+    # Database settings
+    DATABASE_URL: str = "postgresql://postgres:password@localhost:5432/dml_db"
+    
+    # JWT Authentication
+    SECRET_KEY: str = "your-secret-key-change-this-in-production"
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    
+    # Email Configuration (for OTP)
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = ""
+    SMTP_FROM_NAME: str = "Data Preprocessing Platform"
     
     class Config:
         env_file = ".env"

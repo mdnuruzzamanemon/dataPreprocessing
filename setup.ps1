@@ -44,10 +44,28 @@ Write-Host "Installing Python dependencies..." -ForegroundColor Yellow
 pip install -r requirements.txt
 
 if ($LASTEXITCODE -eq 0) {
+    Write-Host "✓ Python dependencies installed!" -ForegroundColor Green
+} else {
+    Write-Host "✗ Failed to install Python dependencies!" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host ""
+Write-Host "Initializing database..." -ForegroundColor Yellow
+python init_db.py
+
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "✓ Database initialized successfully!" -ForegroundColor Green
     Write-Host "✓ Backend setup completed!" -ForegroundColor Green
 } else {
-    Write-Host "✗ Backend setup failed!" -ForegroundColor Red
-    exit 1
+    Write-Host "⚠ Database initialization failed!" -ForegroundColor Yellow
+    Write-Host "  Please ensure:" -ForegroundColor Yellow
+    Write-Host "  1. PostgreSQL is installed and running" -ForegroundColor White
+    Write-Host "  2. Database 'data_preprocessing' exists" -ForegroundColor White
+    Write-Host "  3. DATABASE_URL in .env is correct" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  You can manually initialize later with: python init_db.py" -ForegroundColor White
+    Write-Host ""
 }
 
 Set-Location -Path ".."
@@ -77,7 +95,12 @@ Write-Host "========================================" -ForegroundColor Green
 Write-Host "Setup Complete!" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 Write-Host ""
-Write-Host "Next steps:" -ForegroundColor Cyan
+Write-Host "Before starting the servers:" -ForegroundColor Cyan
+Write-Host "1. Ensure PostgreSQL is installed and running" -ForegroundColor White
+Write-Host "2. Create database: createdb data_preprocessing" -ForegroundColor White
+Write-Host "3. Update backend/.env with your database credentials" -ForegroundColor White
+Write-Host ""
+Write-Host "To start the application:" -ForegroundColor Cyan
 Write-Host "1. Start backend:  cd backend && venv\Scripts\Activate.ps1 && uvicorn app.main:app --reload" -ForegroundColor White
 Write-Host "2. Start frontend: cd frontend && npm run dev" -ForegroundColor White
 Write-Host ""

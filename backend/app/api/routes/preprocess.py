@@ -1,8 +1,12 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 from app.models.schemas import PreprocessRequest, PreprocessResponse
+from app.models.database import User, File as DBFile
 from app.services.data_preprocessor import DataPreprocessor
+from app.database import get_db
+from app.api.dependencies import get_current_user
 
 router = APIRouter()
 preprocessor = DataPreprocessor()
@@ -12,10 +16,23 @@ class ImbalancedDataRequest(BaseModel):
     method: str  # smote, oversample, or undersample
 
 @router.post("/preprocess/{file_id}", response_model=PreprocessResponse)
-async def preprocess_file(file_id: str, request: PreprocessRequest):
+async def preprocess_file(
+    file_id: str,
+    request: PreprocessRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """
-    Apply preprocessing actions to the dataset
+    Apply preprocessing actions to the dataset (requires authentication)
     """
+    # Verify file belongs to user
+    db_file = db.query(DBFile).filter(
+        DBFile.file_id == file_id,
+        DBFile.user_id == current_user.id
+    ).first()
+    
+    if not db_file:
+        raise HTTPException(status_code=404, detail="File not found")
     try:
         result = await preprocessor.preprocess_dataset(file_id, request.actions)
         return result
@@ -27,10 +44,51 @@ async def preprocess_file(file_id: str, request: PreprocessRequest):
         raise HTTPException(status_code=500, detail=f"Error preprocessing file: {str(e)}")
 
 @router.get("/download/{file_id}")
-async def download_file(file_id: str):
+async def download_file(
+    file_id: str,
+    token: str = None,  # Accept token from query parameter
+    request: Request = None,
+    db: Session = Depends(get_db)
+):
     """
     Download the processed dataset
+    Accepts token from query parameter for browser downloads
     """
+    # Get user from token (query param or header)
+    from app.api.dependencies import get_current_user
+    from app.core.security import verify_token
+    from app.models.database import User
+    
+    # Try to get token from query parameter first (for downloads)
+    access_token = token
+    if not access_token and request:
+        # Fall back to header
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            access_token = auth_header.split(" ")[1]
+    
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    # Verify token and get user
+    payload = verify_token(access_token, token_type="access")
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    user_id = payload.get("sub")
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    
+    # Verify file belongs to user
+    from app.models.database import File as DBFile
+    db_file = db.query(DBFile).filter(
+        DBFile.file_id == file_id,
+        DBFile.user_id == user.id
+    ).first()
+    
+    if not db_file:
+        raise HTTPException(status_code=404, detail="File not found")
     try:
         # get_processed_file_path is synchronous, don't await it
         file_path = preprocessor.file_handler.get_processed_file_path(file_id)

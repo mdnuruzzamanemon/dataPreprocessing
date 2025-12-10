@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
 import FileUpload from '@/components/FileUpload';
 import DataSummary from '@/components/DataSummary';
 import IssueList from '@/components/IssueList';
@@ -12,7 +14,6 @@ import {
   AnalysisResponse,
   DataIssue,
   PreprocessAction,
-  IssueType,
 } from '@/types';
 import {
   analyzeFile,
@@ -21,9 +22,14 @@ import {
   preprocessFile,
   downloadFile,
 } from '@/services/dataService';
-import { Loader2, Download, Sparkles, RefreshCw } from 'lucide-react';
+import { Loader2, Download, Sparkles, RefreshCw, Home } from 'lucide-react';
 
-export default function Home() {
+export default function PreprocessingPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { user, loading: authLoading } = useAuth();
+  const initialFileId = searchParams.get('fileId');
+
   const [fileInfo, setFileInfo] = useState<FileInfo | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -33,22 +39,52 @@ export default function Home() {
   const [showImbalancedModal, setShowImbalancedModal] = useState(false);
   const [imbalancedColumns, setImbalancedColumns] = useState<string[]>([]);
 
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, authLoading, router]);
+
+  // Load file if fileId is provided
+  useEffect(() => {
+    if (initialFileId && user) {
+      // Create a minimal FileInfo object and analyze
+      const fileInfoObj: FileInfo = {
+        file_id: initialFileId,
+        filename: 'Uploaded File',
+        file_size: 0,
+        file_type: 'csv',
+      };
+      setFileInfo(fileInfoObj);
+      handleAnalyze(initialFileId);
+    }
+  }, [initialFileId, user]);
+
+  const handleAnalyze = async (fileId: string) => {
+    setAnalyzing(true);
+    try {
+      const analysisResult = await analyzeFile(fileId);
+      setAnalysis(analysisResult);
+    } catch (error) {
+      console.error('Analysis error:', error);
+      alert('Failed to analyze file');
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
   const handleUploadSuccess = async (uploadedFileInfo: FileInfo) => {
     setFileInfo(uploadedFileInfo);
     setAnalysis(null);
     setSelectedActions([]);
     setProcessedFileId(null);
 
+    // Update URL with fileId
+    router.push(`/?fileId=${uploadedFileInfo.file_id}`);
+
     // Automatically analyze
-    setAnalyzing(true);
-    try {
-      const analysisResult = await analyzeFile(uploadedFileInfo.file_id);
-      setAnalysis(analysisResult);
-    } catch (error) {
-      console.error('Analysis error:', error);
-    } finally {
-      setAnalyzing(false);
-    }
+    await handleAnalyze(uploadedFileInfo.file_id);
   };
 
   const handleSelectAction = (issue: DataIssue, method: string) => {
@@ -59,7 +95,6 @@ export default function Home() {
       parameters: {},
     };
 
-    // Check if action already exists and replace it
     const existingIndex = selectedActions.findIndex(
       (a) => a.issue_type === issue.type
     );
@@ -81,18 +116,11 @@ export default function Home() {
       const result = await fixAllIssues(fileInfo.file_id);
       setProcessedFileId(result.file_id);
 
-      // Re-analyze the processed file to show new results
-      console.log('Re-analyzing processed file...');
       const newAnalysis = await analyzeFile(result.file_id);
       setAnalysis(newAnalysis);
-      console.log('New analysis:', newAnalysis);
 
-      // Check if there's imbalanced data that needs user input
       if (result.summary?.has_imbalanced_data && result.summary?.imbalanced_columns?.length > 0) {
-        // Get column names from imbalanced_columns or all unique columns from analysis issues
         let columnsArray: string[] = result.summary.imbalanced_columns || [];
-
-        // If not available, get all unique column names from issues
         if (columnsArray.length === 0 && newAnalysis) {
           const uniqueColumns = new Set<string>();
           newAnalysis.issues.forEach(issue => {
@@ -100,7 +128,6 @@ export default function Home() {
           });
           columnsArray = Array.from(uniqueColumns);
         }
-
         setImbalancedColumns(columnsArray);
         setShowImbalancedModal(true);
         alert(`Preprocessing complete! ${result.applied_actions.length} actions applied. Imbalanced data detected - please choose a sampling method or skip.`);
@@ -120,16 +147,13 @@ export default function Home() {
 
     try {
       await fixImbalancedData(processedFileId, targetColumn, method);
-
-      // Re-analyze after fixing imbalanced data
       const newAnalysis = await analyzeFile(processedFileId);
       setAnalysis(newAnalysis);
-
       alert(`Imbalanced data fix applied successfully! Remaining issues: ${newAnalysis.total_issues}`);
     } catch (error: any) {
       console.error('Imbalanced fix error:', error);
       alert(error.response?.data?.detail || 'Failed to apply imbalanced data fix');
-      throw error; // Re-throw so modal can handle it
+      throw error;
     }
   };
 
@@ -148,24 +172,15 @@ export default function Home() {
       });
       setProcessedFileId(result.file_id);
 
-      // Use the analysis from the response if available, otherwise re-analyze
       if (result.analysis) {
-        console.log('Using analysis from response:', result.analysis);
         setAnalysis(result.analysis);
-        alert(
-          `Successfully processed! ${result.applied_actions.filter((a) => a.status === 'success').length} actions applied. Remaining issues: ${result.analysis.total_issues}`
-        );
+        alert(`Successfully processed! ${result.applied_actions.filter((a) => a.status === 'success').length} actions applied. Remaining issues: ${result.analysis.total_issues}`);
       } else {
-        // Fallback: Re-analyze the processed file to show new results
-        console.log('Re-analyzing processed file...');
         const newAnalysis = await analyzeFile(result.file_id);
         setAnalysis(newAnalysis);
-        alert(
-          `Successfully processed! ${result.applied_actions.filter((a) => a.status === 'success').length} actions applied. Remaining issues: ${newAnalysis.total_issues}`
-        );
+        alert(`Successfully processed! ${result.applied_actions.filter((a) => a.status === 'success').length} actions applied. Remaining issues: ${newAnalysis.total_issues}`);
       }
 
-      // Clear selected actions after applying
       setSelectedActions([]);
     } catch (error: any) {
       console.error('Apply selected error:', error);
@@ -181,23 +196,41 @@ export default function Home() {
   };
 
   const handleReset = () => {
-    setFileInfo(null);
-    setAnalysis(null);
-    setSelectedActions([]);
-    setProcessedFileId(null);
+    router.push('/dashboard');
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+        <Loader2 className="h-12 w-12 animate-spin text-indigo-600" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null;
+  }
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-8 px-4">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            Data Preprocessing Platform
-          </h1>
-          <p className="text-lg text-gray-600">
-            Automatically detect and fix data quality issues in your datasets
-          </p>
+          <div className="flex items-center justify-between mb-4">
+            <Button onClick={() => router.push('/dashboard')} variant="outline">
+              <Home className="mr-2 h-4 w-4" />
+              Dashboard
+            </Button>
+            <div className="flex-1 text-center">
+              <h1 className="text-4xl font-bold text-gray-900 mb-2">
+                Data Preprocessing Platform
+              </h1>
+              <p className="text-lg text-gray-600">
+                Automatically detect and fix data quality issues in your datasets
+              </p>
+            </div>
+            <div className="w-32"></div>
+          </div>
         </div>
 
         {/* Upload Section */}
@@ -210,21 +243,16 @@ export default function Home() {
         {/* Analysis Section */}
         {fileInfo && (
           <div className="space-y-6">
-            {/* Summary */}
             <DataSummary fileInfo={fileInfo} analysis={analysis || undefined} />
 
-            {/* Loading State */}
             {analyzing && (
               <Card className="p-12 text-center">
                 <Loader2 className="mx-auto h-12 w-12 animate-spin text-primary mb-4" />
                 <p className="text-lg font-medium">Analyzing your dataset...</p>
-                <p className="text-sm text-gray-500">
-                  This may take a moment for large files
-                </p>
+                <p className="text-sm text-gray-500">This may take a moment for large files</p>
               </Card>
             )}
 
-            {/* Issues and Actions */}
             {analysis && !analyzing && (
               <>
                 <div className="flex items-center justify-between">
@@ -232,11 +260,7 @@ export default function Home() {
                   <div className="flex gap-2">
                     {analysis.total_issues > 0 && (
                       <>
-                        <Button
-                          onClick={handleFixAll}
-                          disabled={processing}
-                          size="lg"
-                        >
+                        <Button onClick={handleFixAll} disabled={processing} size="lg">
                           {processing ? (
                             <>
                               <Loader2 className="mr-2 h-5 w-5 animate-spin" />
@@ -250,12 +274,7 @@ export default function Home() {
                           )}
                         </Button>
                         {selectedActions.length > 0 && (
-                          <Button
-                            onClick={handleApplySelected}
-                            disabled={processing}
-                            variant="secondary"
-                            size="lg"
-                          >
+                          <Button onClick={handleApplySelected} disabled={processing} variant="secondary" size="lg">
                             Apply {selectedActions.length} Selected
                           </Button>
                         )}
@@ -268,10 +287,7 @@ export default function Home() {
                   </div>
                 </div>
 
-                <IssueList
-                  issues={analysis.issues}
-                  onSelectAction={handleSelectAction}
-                />
+                <IssueList issues={analysis.issues} onSelectAction={handleSelectAction} />
 
                 {processedFileId && (
                   <Card className="p-6 bg-green-50 border-green-200">
@@ -297,7 +313,6 @@ export default function Home() {
         )}
       </div>
 
-      {/* Imbalanced Data Modal */}
       {showImbalancedModal && processedFileId && (
         <ImbalancedDataModal
           columns={imbalancedColumns}
@@ -310,4 +325,3 @@ export default function Home() {
     </main>
   );
 }
-
