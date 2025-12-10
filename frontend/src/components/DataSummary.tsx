@@ -14,28 +14,28 @@ interface DataSummaryProps {
 
 export default function DataSummary({ fileInfo, analysis }: DataSummaryProps) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       <Card>
-        <CardContent className="p-6">
+        <CardContent className="p-4 sm:p-6">
           <div className="flex items-center justify-between">
-            <div>
+            <div className="flex-1 min-w-0 mr-3">
               <p className="text-sm text-gray-500 mb-1">File Name</p>
-              <p className="font-semibold truncate">{fileInfo.filename}</p>
+              <p className="font-semibold truncate" title={fileInfo.filename}>{fileInfo.filename}</p>
               <p className="text-xs text-gray-400 mt-1">{formatBytes(fileInfo.size)}</p>
             </div>
-            <File className="h-8 w-8 text-primary" />
+            <File className="h-6 w-6 sm:h-8 sm:w-8 text-primary flex-shrink-0" />
           </div>
         </CardContent>
       </Card>
 
       <Card>
-        <CardContent className="p-6">
+        <CardContent className="p-4 sm:p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 mb-1">Total Rows</p>
-              <p className="text-2xl font-bold">{formatNumber(fileInfo.rows)}</p>
+              <p className="text-xl sm:text-2xl font-bold">{formatNumber(fileInfo.rows)}</p>
             </div>
-            <Database className="h-8 w-8 text-blue-500" />
+            <Database className="h-6 w-6 sm:h-8 sm:w-8 text-blue-500 flex-shrink-0" />
           </div>
         </CardContent>
       </Card>
@@ -74,9 +74,8 @@ export default function DataSummary({ fileInfo, analysis }: DataSummaryProps) {
               )}
             </div>
             <AlertCircle
-              className={`h-8 w-8 ${
-                analysis && analysis.total_issues > 0 ? 'text-red-500' : 'text-gray-400'
-              }`}
+              className={`h-8 w-8 ${analysis && analysis.total_issues > 0 ? 'text-red-500' : 'text-gray-400'
+                }`}
             />
           </div>
         </CardContent>

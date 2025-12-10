@@ -31,11 +31,9 @@ export default function VerifyOTPPage() {
 
             const data = await response.json();
 
-            // Store tokens
             localStorage.setItem('access_token', data.access_token);
             localStorage.setItem('refresh_token', data.refresh_token);
 
-            // Redirect to dashboard
             router.push('/dashboard');
         } catch (err: any) {
             setError(err.message);
@@ -45,12 +43,12 @@ export default function VerifyOTPPage() {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4">
-            <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
-                <div className="text-center mb-8">
-                    <h1 className="text-3xl font-bold text-gray-900 mb-2">Verify Your Email</h1>
-                    <p className="text-gray-600">
-                        We've sent a 6-digit code to <span className="font-semibold">{email}</span>
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-blue-100 px-4">
+            <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-6 sm:p-8">
+                <div className="text-center mb-6 sm:mb-8">
+                    <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Verify Your Email</h1>
+                    <p className="text-sm sm:text-base text-gray-600">
+                        We've sent a 6-digit code to <span className="font-semibold break-all">{email}</span>
                     </p>
                 </div>
 
@@ -66,13 +64,13 @@ export default function VerifyOTPPage() {
                             onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
                             placeholder="000000"
                             maxLength={6}
-                            className="w-full px-4 py-3 text-center text-2xl font-bold tracking-widest border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                            className="w-full px-4 py-3 text-center text-xl sm:text-2xl font-bold tracking-widest border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                             required
                         />
                     </div>
 
                     {error && (
-                        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+                        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
                             {error}
                         </div>
                     )}
@@ -80,7 +78,7 @@ export default function VerifyOTPPage() {
                     <button
                         type="submit"
                         disabled={loading || otp.length !== 6}
-                        className="w-full bg-indigo-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className="w-full bg-indigo-600 text-white py-2 sm:py-3 px-4 rounded-lg font-semibold hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                         {loading ? 'Verifying...' : 'Verify Email'}
                     </button>
