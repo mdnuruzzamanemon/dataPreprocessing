@@ -50,8 +50,7 @@ export default function DashboardPage() {
         try {
             setUploading(true);
             const result = await uploadFile(file);
-            // Redirect to preprocessing page with fileId
-            router.push(`/?fileId=${result.file_id}`);
+            router.push(`/dashboard/results?fileId=${result.file_id}`);
         } catch (error: any) {
             alert(error.message || 'Upload failed');
         } finally {

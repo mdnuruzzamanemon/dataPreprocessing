@@ -60,7 +60,7 @@ export default function FilesPage() {
     };
 
     const handleView = (fileId: string) => {
-        router.push(`/?fileId=${fileId}`);
+        router.push(`/dashboard/results?fileId=${fileId}`);
     };
 
     const handleDownload = (fileId: string, filename: string) => {
