@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.api.routes import upload, analyze, preprocess, auth, files
+from app.api.routes import upload, analyze, preprocess, auth, files, mining
 
 app = FastAPI(title=settings.PROJECT_NAME, version=settings.API_VERSION)
 
@@ -20,6 +20,7 @@ app.include_router(upload.router, prefix="/api")
 app.include_router(analyze.router, prefix="/api")
 app.include_router(preprocess.router, prefix="/api")
 app.include_router(files.router)
+app.include_router(mining.router)
 
 @app.get("/")
 async def root():

@@ -9,7 +9,8 @@ import {
     UserIcon,
     ArrowRightOnRectangleIcon,
     Bars3Icon,
-    XMarkIcon
+    XMarkIcon,
+    ChartBarIcon
 } from '@heroicons/react/24/outline';
 
 interface SidebarProps {
@@ -25,6 +26,7 @@ export default function DashboardLayout({ children }: SidebarProps) {
     const navigation = [
         { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
         { name: 'My Files', href: '/dashboard/files', icon: DocumentIcon },
+        { name: 'Data Mining', href: '/dashboard/mining', icon: ChartBarIcon },
         { name: 'Profile', href: '/dashboard/profile', icon: UserIcon },
     ];
 
