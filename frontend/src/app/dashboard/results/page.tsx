@@ -229,34 +229,34 @@ export default function ResultsPage() {
 
                         {analysis && !analyzing && (
                             <>
-                                <div className="flex items-center justify-between">
-                                    <h2 className="text-2xl font-bold text-gray-900">Detected Issues</h2>
-                                    <div className="flex gap-2">
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+                                    <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Detected Issues</h2>
+                                    <div className="flex flex-wrap gap-2">
                                         {analysis.total_issues > 0 && (
                                             <>
-                                                <Button onClick={handleFixAll} disabled={processing} size="lg">
+                                                <Button onClick={handleFixAll} disabled={processing} size="lg" className="flex-1 sm:flex-none">
                                                     {processing ? (
                                                         <>
-                                                            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                                                            Processing...
+                                                            <Loader2 className="mr-2 h-4 w-4 sm:h-5 sm:w-5 animate-spin" />
+                                                            <span className="text-sm sm:text-base">Processing...</span>
                                                         </>
                                                     ) : (
                                                         <>
-                                                            <Sparkles className="mr-2 h-5 w-5" />
-                                                            Fix All Issues
+                                                            <Sparkles className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
+                                                            <span className="text-sm sm:text-base">Fix All Issues</span>
                                                         </>
                                                     )}
                                                 </Button>
                                                 {selectedActions.length > 0 && (
-                                                    <Button onClick={handleApplySelected} disabled={processing} variant="secondary" size="lg">
-                                                        Apply {selectedActions.length} Selected
+                                                    <Button onClick={handleApplySelected} disabled={processing} variant="secondary" size="lg" className="flex-1 sm:flex-none">
+                                                        <span className="text-sm sm:text-base">Apply {selectedActions.length} Selected</span>
                                                     </Button>
                                                 )}
                                             </>
                                         )}
-                                        <Button onClick={handleNewFile} variant="outline" size="lg">
-                                            <Upload className="mr-2 h-5 w-5" />
-                                            New File
+                                        <Button onClick={handleNewFile} variant="outline" size="lg" className="flex-1 sm:flex-none">
+                                            <Upload className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
+                                            <span className="text-sm sm:text-base">New File</span>
                                         </Button>
                                     </div>
                                 </div>
