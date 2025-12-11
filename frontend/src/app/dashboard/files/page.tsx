@@ -145,15 +145,28 @@ export default function FilesPage() {
                                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                                             </svg>
                                                         </div>
-                                                        <div className="ml-4">
-                                                            <div className="text-sm font-medium text-gray-900">{file.filename}</div>
+                                                        <div className="ml-4 flex-1">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="text-sm font-medium text-gray-900">{file.filename}</div>
+                                                                {file.status === 'processed' && (
+                                                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                                                                        <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                                                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                                                        </svg>
+                                                                        Processed
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                             <div className="text-sm text-gray-500">{file.file_type}</div>
                                                         </div>
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatFileSize(file.file_size)}</td>
                                                 <td className="px-6 py-4 whitespace-nowrap">
-                                                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">{file.status}</span>
+                                                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${file.status === 'processed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                                                        }`}>
+                                                        {file.status}
+                                                    </span>
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDate(file.uploaded_at)}</td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-3">
