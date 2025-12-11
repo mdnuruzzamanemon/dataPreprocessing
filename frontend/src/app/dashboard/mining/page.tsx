@@ -187,11 +187,16 @@ export default function MiningPage() {
             const element = document.getElementById('mining-results');
             if (!element) return;
 
+            // Show loading message
+            const originalText = element.innerHTML;
+
             // Capture the visualization as canvas
             const canvas = await html2canvas(element, {
                 scale: 2,
                 backgroundColor: '#ffffff',
-                logging: false
+                logging: false,
+                windowHeight: element.scrollHeight,
+                height: element.scrollHeight
             });
 
             const imgData = canvas.toDataURL('image/png');
@@ -201,21 +206,73 @@ export default function MiningPage() {
                 format: 'a4'
             });
 
-            const imgWidth = 190;
+            const pageWidth = 210; // A4 width in mm
+            const pageHeight = 297; // A4 height in mm
+            const margin = 10;
+            const contentWidth = pageWidth - (2 * margin);
+
+            // Calculate image dimensions
+            const imgWidth = contentWidth;
             const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-            // Add title
+            // Add title on first page
             pdf.setFontSize(16);
-            pdf.text(`Data Mining Results - ${selectedAnalytics}`, 10, 10);
+            pdf.text(`Data Mining Results - ${selectedAnalytics}`, margin, 15);
 
             // Add interpretation if available
+            let yOffset = 25;
             if (results.results.interpretation) {
                 pdf.setFontSize(10);
-                pdf.text(results.results.interpretation, 10, 20, { maxWidth: 190 });
+                const splitText = pdf.splitTextToSize(results.results.interpretation, contentWidth);
+                pdf.text(splitText, margin, yOffset);
+                yOffset += (splitText.length * 5) + 5;
             }
 
-            // Add image
-            pdf.addImage(imgData, 'PNG', 10, 30, imgWidth, imgHeight);
+            // Calculate how much content fits on first page
+            const firstPageSpace = pageHeight - yOffset - margin;
+            const contentPerPage = pageHeight - (2 * margin);
+
+            // Add image(s) across multiple pages if needed
+            let currentY = 0;
+            let pageNumber = 0;
+
+            while (currentY < imgHeight) {
+                if (pageNumber > 0) {
+                    pdf.addPage();
+                }
+
+                const startY = pageNumber === 0 ? yOffset : margin;
+                const availableHeight = pageNumber === 0 ? firstPageSpace : contentPerPage;
+                const sourceY = currentY * (canvas.width / imgWidth);
+                const sourceHeight = Math.min(
+                    availableHeight * (canvas.width / imgWidth),
+                    canvas.height - sourceY
+                );
+
+                // Create a temporary canvas for this page's content
+                const pageCanvas = document.createElement('canvas');
+                pageCanvas.width = canvas.width;
+                pageCanvas.height = sourceHeight;
+                const ctx = pageCanvas.getContext('2d');
+
+                if (ctx) {
+                    ctx.drawImage(
+                        canvas,
+                        0, sourceY,
+                        canvas.width, sourceHeight,
+                        0, 0,
+                        canvas.width, sourceHeight
+                    );
+
+                    const pageImgData = pageCanvas.toDataURL('image/png');
+                    const pageImgHeight = (sourceHeight * imgWidth) / canvas.width;
+
+                    pdf.addImage(pageImgData, 'PNG', margin, startY, imgWidth, pageImgHeight);
+                }
+
+                currentY += availableHeight;
+                pageNumber++;
+            }
 
             // Save PDF
             pdf.save(`mining_results_${selectedAnalytics}_${Date.now()}.pdf`);

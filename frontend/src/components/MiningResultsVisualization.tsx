@@ -12,7 +12,16 @@ import {
     Bar,
     LineChart,
     Line,
-    Cell
+    Cell,
+    PieChart,
+    Pie,
+    AreaChart,
+    Area,
+    RadarChart,
+    PolarGrid,
+    PolarAngleAxis,
+    PolarRadiusAxis,
+    Radar
 } from 'recharts';
 
 interface MiningResultsVisualizationProps {
@@ -21,7 +30,7 @@ interface MiningResultsVisualizationProps {
     columnsUsed: string[];
 }
 
-const COLORS = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444'];
+const COLORS = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#84cc16'];
 
 export default function MiningResultsVisualization({
     analyticsType,
@@ -55,9 +64,9 @@ export default function MiningResultsVisualization({
                     </div>
                 </div>
 
-                {/* Scatter Plot */}
+                {/* Scatter Plot with Trend Line */}
                 <div className="bg-white border border-gray-200 rounded-lg p-4">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Scatter Plot</h3>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Correlation Scatter Plot</h3>
                     <ResponsiveContainer width="100%" height={400}>
                         <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
                             <CartesianGrid strokeDasharray="3 3" />
@@ -99,18 +108,28 @@ export default function MiningResultsVisualization({
                     </div>
                 </div>
 
-                {/* Cluster Sizes */}
+                {/* Pie Chart for Cluster Distribution */}
                 <div className="bg-white border border-gray-200 rounded-lg p-4">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Cluster Sizes</h3>
-                    <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={clusterSizes}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="cluster" />
-                            <YAxis />
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Cluster Distribution</h3>
+                    <ResponsiveContainer width="100%" height={350}>
+                        <PieChart>
+                            <Pie
+                                data={clusterSizes}
+                                cx="50%"
+                                cy="50%"
+                                labelLine={true}
+                                label={({ cluster, size }) => `${cluster}: ${size}`}
+                                outerRadius={120}
+                                fill="#8884d8"
+                                dataKey="size"
+                            >
+                                {clusterSizes.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                ))}
+                            </Pie>
                             <Tooltip />
                             <Legend />
-                            <Bar dataKey="size" fill="#6366f1" />
-                        </BarChart>
+                        </PieChart>
                     </ResponsiveContainer>
                 </div>
 
@@ -200,7 +219,7 @@ export default function MiningResultsVisualization({
                     </div>
                 )}
 
-                {/* Feature Importance */}
+                {/* Feature Importance - Horizontal Bar Chart */}
                 {featureImportance.length > 0 && (
                     <div className="bg-white border border-gray-200 rounded-lg p-4">
                         <h3 className="text-lg font-semibold text-gray-900 mb-4">Feature Importance</h3>
@@ -239,9 +258,9 @@ export default function MiningResultsVisualization({
                     </p>
                 </div>
 
-                {/* Actual vs Predicted */}
+                {/* Actual vs Predicted - Scatter with Line */}
                 <div className="bg-white border border-gray-200 rounded-lg p-4">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Actual vs Predicted</h3>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Actual vs Predicted Values</h3>
                     <ResponsiveContainer width="100%" height={400}>
                         <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
                             <CartesianGrid strokeDasharray="3 3" />
@@ -250,19 +269,11 @@ export default function MiningResultsVisualization({
                             <Tooltip cursor={{ strokeDasharray: '3 3' }} />
                             <Legend />
                             <Scatter name="Predictions" data={results.scatter_data} fill="#6366f1" />
-                            <Line
-                                type="monotone"
-                                dataKey="predicted"
-                                stroke="#ef4444"
-                                strokeDasharray="5 5"
-                                dot={false}
-                                name="Perfect Fit"
-                            />
                         </ScatterChart>
                     </ResponsiveContainer>
                 </div>
 
-                {/* Coefficients */}
+                {/* Coefficients - Bar Chart with Colors */}
                 <div className="bg-white border border-gray-200 rounded-lg p-4">
                     <h3 className="text-lg font-semibold text-gray-900 mb-4">Model Coefficients</h3>
                     <div className="mb-4 p-3 bg-gray-50 rounded">
@@ -275,7 +286,7 @@ export default function MiningResultsVisualization({
                             <XAxis type="number" />
                             <YAxis dataKey="feature" type="category" width={100} />
                             <Tooltip />
-                            <Bar dataKey="coefficient" fill="#6366f1">
+                            <Bar dataKey="coefficient">
                                 {coefficients.map((entry, index) => (
                                     <Cell key={`cell-${index}`} fill={entry.coefficient >= 0 ? '#10b981' : '#ef4444'} />
                                 ))}
@@ -317,10 +328,10 @@ export default function MiningResultsVisualization({
                                     </div>
                                 </div>
 
-                                {/* Histogram */}
+                                {/* Area Chart for Distribution */}
                                 {stats.histogram && (
                                     <ResponsiveContainer width="100%" height={300}>
-                                        <BarChart data={stats.histogram}>
+                                        <AreaChart data={stats.histogram}>
                                             <CartesianGrid strokeDasharray="3 3" />
                                             <XAxis
                                                 dataKey="bin_start"
@@ -330,8 +341,8 @@ export default function MiningResultsVisualization({
                                             <Tooltip
                                                 labelFormatter={(value) => `Range: ${value.toFixed(1)}`}
                                             />
-                                            <Bar dataKey="count" fill="#6366f1" />
-                                        </BarChart>
+                                            <Area type="monotone" dataKey="count" stroke="#6366f1" fill="#6366f1" fillOpacity={0.6} />
+                                        </AreaChart>
                                     </ResponsiveContainer>
                                 )}
                             </>
@@ -355,21 +366,30 @@ export default function MiningResultsVisualization({
                                     </div>
                                 </div>
 
-                                {/* Distribution */}
+                                {/* Pie Chart for Categorical Distribution */}
                                 {stats.distribution && (
-                                    <ResponsiveContainer width="100%" height={300}>
-                                        <BarChart
-                                            data={Object.entries(stats.distribution).map(([key, value]) => ({
-                                                category: key,
-                                                count: value as number
-                                            }))}
-                                        >
-                                            <CartesianGrid strokeDasharray="3 3" />
-                                            <XAxis dataKey="category" angle={-45} textAnchor="end" height={100} />
-                                            <YAxis />
+                                    <ResponsiveContainer width="100%" height={350}>
+                                        <PieChart>
+                                            <Pie
+                                                data={Object.entries(stats.distribution).map(([key, value]) => ({
+                                                    name: key,
+                                                    value: value as number
+                                                }))}
+                                                cx="50%"
+                                                cy="50%"
+                                                labelLine={true}
+                                                label={({ name, value }) => `${name}: ${value}`}
+                                                outerRadius={120}
+                                                fill="#8884d8"
+                                                dataKey="value"
+                                            >
+                                                {Object.keys(stats.distribution).map((key, index) => (
+                                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                                ))}
+                                            </Pie>
                                             <Tooltip />
-                                            <Bar dataKey="count" fill="#6366f1" />
-                                        </BarChart>
+                                            <Legend />
+                                        </PieChart>
                                     </ResponsiveContainer>
                                 )}
                             </>
