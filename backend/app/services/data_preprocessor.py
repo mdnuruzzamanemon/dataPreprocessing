@@ -103,6 +103,9 @@ class DataPreprocessor:
         # Save processed data
         processed_path = self.file_handler.save_processed_dataframe(file_id, df)
         
+        # Update file status to 'processed' in database
+        self._update_file_status(file_id, 'processed')
+        
         # Re-analyze to get remaining issues (full analysis for frontend)
         remaining_issues_analysis = self._analyze_dataframe(df, exclude_skewness_columns=failed_skewness_columns)
         remaining_issues_count = len(remaining_issues_analysis)
@@ -891,6 +894,9 @@ class DataPreprocessor:
             imbalanced_issue = next(issue for issue in final_issues if issue.type == IssueType.IMBALANCED_DATA)
             imbalanced_columns = imbalanced_issue.affected_columns
         
+        # Update file status to 'processed' in database
+        self._update_file_status(file_id, 'processed')
+        
         return PreprocessResponse(
             file_id=file_id,
             original_rows=original_rows,
@@ -1104,3 +1110,21 @@ class DataPreprocessor:
                 print(f"    Column '{col}': Kept as string (conversion failed)")
         
         return df
+    
+    def _update_file_status(self, file_id: str, status: str):
+        """Update file status in database"""
+        try:
+            from app.models.database import File as DBFile
+            from app.database import get_db
+            
+            db = next(get_db())
+            try:
+                db_file = db.query(DBFile).filter(DBFile.file_id == file_id).first()
+                if db_file:
+                    db_file.status = status
+                    db.commit()
+                    print(f"✓ Updated file status to '{status}' in database")
+            finally:
+                db.close()
+        except Exception as e:
+            print(f"⚠️  Failed to update file status: {e}")
